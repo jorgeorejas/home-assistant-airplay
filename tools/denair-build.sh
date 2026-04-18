@@ -21,6 +21,23 @@ if [ ! -f "${IDF_PATH}/export.sh" ]; then
     exit 1
 fi
 
+# macOS system python3 is 3.9, which trips a Python-3.9-specific
+# importlib.metadata bug when ESP-IDF checks its Python dependencies
+# (it can't find `ruamel.yaml.clib` / other namespace-style packages by
+# their distribution name). Force homebrew's python3.13 via a shim in
+# PATH when running idf.py; export.sh's detect_python.sh picks up the
+# first `python3` it finds.
+PY_SHIM_DIR="${HOME}/esp/denair-python-shim"
+if [ -x "${PY_SHIM_DIR}/python3" ]; then
+    export PATH="${PY_SHIM_DIR}:${PATH}"
+fi
+
+# cmake and ninja come from Homebrew on this machine; make sure they are on
+# PATH regardless of how this script is invoked.
+if [ -d /opt/homebrew/bin ]; then
+    export PATH="/opt/homebrew/bin:${PATH}"
+fi
+
 # shellcheck disable=SC1091
 source "${IDF_PATH}/export.sh" >/dev/null
 
