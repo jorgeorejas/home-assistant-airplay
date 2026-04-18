@@ -1,0 +1,29 @@
+if DAC_TLV320AIC3204
+
+    config TLV320AIC3204_I2C_ADDR
+        hex "AIC3204 I2C address (7-bit)"
+        default 0x18
+        help
+            AIC3204 I2C address on the HA Voice PE is 0x18 (confirmed by the
+            existing ESPHome aic3204 component that uses this bus at the same
+            address). Override only if you know your wiring differs.
+
+    config TLV320AIC3204_SAMPLE_RATE
+        int "Audio sample rate"
+        default 44100
+        help
+            Default I2S sample rate for the DAC. AirPlay sources negotiate,
+            but the DAC config is pinned to this rate at init.
+
+    config TLV320AIC3204_MAX_VOLUME_DB
+        int "Maximum DAC volume (dB) at AirPlay 0 dB"
+        range -100 0
+        default -6
+        help
+            Volume the DAC applies when AirPlay reports 0 dB (max). AIC3204
+            DAC digital volume registers (page 0, regs 65/66) go from +24 dB
+            down to -63.5 dB in 0.5 dB steps; hardware volume beats software
+            scaling for SNR, which is why we cap the codec side here and let
+            the encoder / AirPlay set an attenuation below this ceiling.
+
+endif

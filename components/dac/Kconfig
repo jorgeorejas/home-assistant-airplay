@@ -14,9 +14,17 @@ menu "DAC Configuration"
             Build the TI TAS5825M DAC/amplifier driver.
             The board must register it at runtime via dac_register().
 
+    config DAC_TLV320AIC3204
+        bool "TI TLV320AIC3204 (HA Voice PE)"
+        default n
+        help
+            Build the TI TLV320AIC3204 codec/DAC driver. Selected
+            automatically when BOARD_HA_VOICE_PE is chosen. The board must
+            register it at runtime via dac_register().
+
     config DAC_CONTROLS_VOLUME
         bool
-        default y if DAC_TAS57XX || DAC_TAS58XX
+        default y if DAC_TAS57XX || DAC_TAS58XX || DAC_TLV320AIC3204
         help
             Hidden option. Set automatically when a hardware DAC driver is enabled.
             When true, the DAC handles volume control and software attenuation

@@ -1,0 +1,51 @@
+# DenAir sdkconfig overrides for the HA Voice PE board.
+# Layered on top of sdkconfig.defaults + sdkconfig.defaults.esp32s3.
+# Build invocation:
+#   idf.py set-target esp32s3
+#   idf.py -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.esp32s3;sdkconfig.defaults.ha_voice_pe" reconfigure
+#   idf.py build
+
+# Board selection
+CONFIG_BOARD_HA_VOICE_PE=y
+CONFIG_DAC_TLV320AIC3204=y
+
+# --- GPIO overrides for HA Voice PE (see components/boards/ha_voice_pe/iot_board.h
+#     for the authoritative map; these mirror them into Kconfig so pieces of
+#     the upstream codebase that still read CONFIG_* Kconfig knobs see the
+#     same values) ---
+CONFIG_I2S_BCK_IO=8
+CONFIG_I2S_WS_IO=7
+CONFIG_I2S_DO_IO=10
+CONFIG_I2S_SCK_IO=-1
+CONFIG_I2S_GND_IO=-1
+CONFIG_I2S_VCC_IO=-1
+
+CONFIG_DAC_I2C_SDA=5
+CONFIG_DAC_I2C_SCL=6
+
+CONFIG_JACK_GPIO=17
+CONFIG_MUTE_GPIO=-1
+CONFIG_LED_STATUS_GPIO=-1
+CONFIG_LED_ERROR_GPIO=-1
+CONFIG_LED_RGB_GPIO=-1
+
+# --- HA Voice PE is an ESP32-S3R8: 16 MB flash + 8 MB octal PSRAM at 80 MHz ---
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="16MB"
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+CONFIG_SPIRAM_FETCH_INSTRUCTIONS=y
+CONFIG_SPIRAM_RODATA=y
+
+# --- Features we do NOT want for DenAir ---
+# The 12-LED ring is driven by our own engine (Phase 2), not the upstream
+# single-LED status indicator — keep it off to avoid pin conflicts.
+CONFIG_LED_ENABLED=n
+# Skip the OLED display entirely; saves heap + flash + the u8g2 footprint.
+CONFIG_DISPLAY_ENABLED=n
+# No Bluetooth on this build path.
+# (No explicit CONFIG_BT here — default off on S3, confirmed by upstream
+#  sdkconfig.defaults.esp32s3 not setting it.)
+
+# --- Native USB CDC for the ESP32-S3 (HA Voice PE has no UART bridge) ---
+CONFIG_ESP_CONSOLE_USB_CDC=y
