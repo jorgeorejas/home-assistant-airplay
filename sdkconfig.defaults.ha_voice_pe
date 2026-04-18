@@ -39,8 +39,8 @@ CONFIG_SPIRAM_RODATA=y
 
 # --- Features we do NOT want for DenAir ---
 # The 12-LED ring is driven by our own engine (Phase 2), not the upstream
-# single-LED status indicator — keep it off to avoid pin conflicts.
-CONFIG_LED_ENABLED=n
+# single-LED status indicator. Upstream has no master LED_ENABLED knob; the
+# GPIO knobs above at -1 already keep the pins unallocated.
 # Skip the OLED display entirely; saves heap + flash + the u8g2 footprint.
 CONFIG_DISPLAY_ENABLED=n
 # No Bluetooth on this build path.
