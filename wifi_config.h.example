@@ -1,0 +1,20 @@
+#pragma once
+
+/*
+ * DenAir WiFi credentials — copy this file to wifi_config.h and fill in.
+ * wifi_config.h is in .gitignore and never committed.
+ *
+ * Up to two networks. DenAir tries WIFI_SSID_1 first, falls back to
+ * WIFI_SSID_2 if the first does not associate within WIFI_CONNECT_TIMEOUT_MS.
+ * Leave _SSID_2 empty ("") if you only have one network.
+ */
+
+#define DENAIR_DEVICE_NAME       "DenAir"   // base mDNS name; MAC suffix appended at runtime
+
+#define WIFI_SSID_1              "YourMainSSID"
+#define WIFI_PASSWORD_1          "YourMainPassword"
+
+#define WIFI_SSID_2              ""         // optional fallback; empty = disabled
+#define WIFI_PASSWORD_2          ""
+
+#define WIFI_CONNECT_TIMEOUT_MS  15000      // per-network association timeout

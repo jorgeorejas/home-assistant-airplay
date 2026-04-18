@@ -3,6 +3,35 @@ node_modules/
 .env
 .env.local
 *.log
+
+# ESPHome legacy (pre-DenAir pivot)
 secrets.yaml
 .esphome/
+
+# ESP-IDF build output
 build/
+managed_components/
+sdkconfig
+sdkconfig.old
+
+# DenAir WiFi credentials — never commit
+wifi_config.h
+
+# Phase 0 heap-probe CSVs
+phase0_*.csv
+
+# --- merged from airplay-esp32 v0.1.x ---
+.cache/
+.claude/
+.pio/
+.venv/
+.vscode/
+build*
+managed_components/
+sdkconfig
+sdkconfig.*
+!sdkconfig.defaults
+!sdkconfig.defaults.*
+
+#
+user_platformio.ini
