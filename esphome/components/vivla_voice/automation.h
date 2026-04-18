@@ -38,11 +38,6 @@ template<typename... Ts> class IsRunningCondition : public Condition<Ts...> {
   VivlaVoice *parent_;
 };
 
-class NoPayloadTrigger : public Trigger<> {};
-class ErrorTrigger : public Trigger<std::string> {};
-class IntentProgressTrigger : public Trigger<std::string> {};
-class TranscriptTrigger : public Trigger<std::string, std::string> {};
-
 }  // namespace vivla_voice
 }  // namespace esphome
 

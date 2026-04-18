@@ -4,7 +4,6 @@
 
 #include "esphome/core/log.h"
 #include "esphome/components/audio/audio.h"
-#include "esphome/components/json/json_util.h"
 
 #include <ArduinoJson.h>
 #include <cstring>
