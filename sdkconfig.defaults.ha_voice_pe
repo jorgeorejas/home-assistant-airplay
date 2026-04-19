@@ -47,5 +47,10 @@ CONFIG_DISPLAY_ENABLED=n
 # (No explicit CONFIG_BT here — default off on S3, confirmed by upstream
 #  sdkconfig.defaults.esp32s3 not setting it.)
 
-# --- Native USB CDC for the ESP32-S3 (HA Voice PE has no UART bridge) ---
+# --- Native USB CDC for the ESP32-S3 (HA Voice PE has no UART bridge).
+# Explicitly unset UART_DEFAULT so the Kconfig choice reliably switches to
+# USB_CDC even on incremental reconfigure. ---
+# CONFIG_ESP_CONSOLE_UART_DEFAULT is not set
 CONFIG_ESP_CONSOLE_USB_CDC=y
+# CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG is not set
+CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
