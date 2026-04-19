@@ -40,6 +40,12 @@
 #define BOARD_JACK_GPIO        17  /* 3.5 mm jack detect (200 ms debounce) */
 #define BOARD_SPKFAULT_GPIO    -1
 #define BOARD_AMP_ENABLE_GPIO  47  /* TPA6211A internal speaker amp enable: HIGH = on */
+
+/* ---- LED ring power rail ---- */
+#define BOARD_LED_POWER_GPIO   45  /* switched VCC for the WS2812B ring (HIGH = on) */
+
+/* ---- Hardware mute slide switch (repurposed in DenAir) ---- */
+#define BOARD_MUTE_SWITCH_GPIO 3   /* HIGH = LEDs on, LOW = LEDs off */
 /* DenAir handles amp enable in our DAC driver's enable_speaker op, not via
  * upstream's generic MUTE_GPIO path. */
 #define BOARD_MUTE_GPIO        -1

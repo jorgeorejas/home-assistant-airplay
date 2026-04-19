@@ -8,3 +8,4 @@
 esp_err_t denair_encoder_start(void (*on_turn)(int direction));
 esp_err_t denair_button_start(void (*on_short_press)(void),
                               void (*on_long_press)(void));
+esp_err_t denair_led_switch_start(void);

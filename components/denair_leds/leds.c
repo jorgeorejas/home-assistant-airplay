@@ -15,6 +15,7 @@
 #include "denair_leds.h"
 #include "leds_internal.h"
 
+#include "driver/gpio.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -26,9 +27,14 @@
 #include <string.h>
 
 #define LED_GPIO         21
+#define LED_POWER_GPIO   45
 #define LED_COUNT        12
 #define LED_RENDER_HZ    50
 #define LED_RENDER_MS    (1000 / LED_RENDER_HZ)
+/* After enabling the VCC rail, wait this long for the LDO to stabilize
+ * before we start clocking WS2812 data. Too short → first frame looks
+ * garbled until the cap charges. */
+#define LED_POWER_SETTLE_MS 15
 
 #define CONN_IN_MS       5000
 #define CONN_OUT_MS      2000
@@ -46,6 +52,10 @@ static _Atomic int64_t s_volume_overlay_until_us = 0;
 static _Atomic int64_t s_conn_in_until_us = 0;
 static _Atomic int64_t s_conn_out_until_us = 0;
 static _Atomic bool s_muted = false;
+
+/* Power rail state (GPIO45) + wall-clock of last power-on for settle wait. */
+static _Atomic bool s_powered = false;
+static _Atomic int64_t s_power_on_at_us = 0;
 
 /* Track last observed beat timestamp to detect "new beat since last frame" */
 static int64_t s_last_rendered_beat_us = 0;
@@ -199,6 +209,19 @@ static void led_task(void *arg) {
   for (;;) {
     int64_t now = esp_timer_get_time();
 
+    /* Power gating: if the rail is off, do nothing (no data clock →
+     * strip stays dark even if cached). When it flips back on, give the
+     * LDO/cap a few ms to settle before we start writing pixels. */
+    if (!atomic_load(&s_powered)) {
+      vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(LED_RENDER_MS));
+      continue;
+    }
+    int64_t power_on_at = atomic_load(&s_power_on_at_us);
+    if (power_on_at > 0 && now - power_on_at < (int64_t)LED_POWER_SETTLE_MS * 1000) {
+      vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(LED_RENDER_MS));
+      continue;
+    }
+
     if (atomic_load(&s_muted)) {
       render_muted();
     } else if (now < atomic_load(&s_volume_overlay_until_us)) {
@@ -225,6 +248,20 @@ static void led_task(void *arg) {
 
 esp_err_t denair_leds_init(void) {
   if (s_strip) return ESP_OK;
+
+  /* Configure the LED VCC rail on GPIO45 as output. Start LOW (ring off)
+   * — a UI input (hardware mute slide on GPIO3) decides when to turn
+   * it on. */
+  gpio_config_t power_cfg = {
+      .pin_bit_mask = (1ULL << LED_POWER_GPIO),
+      .mode = GPIO_MODE_OUTPUT,
+      .pull_up_en = GPIO_PULLUP_DISABLE,
+      .pull_down_en = GPIO_PULLDOWN_DISABLE,
+      .intr_type = GPIO_INTR_DISABLE,
+  };
+  gpio_config(&power_cfg);
+  gpio_set_level(LED_POWER_GPIO, 0);
+  atomic_store(&s_powered, false);
 
   led_strip_config_t strip_cfg = {
       .strip_gpio_num = LED_GPIO,
@@ -284,4 +321,22 @@ void denair_leds_flash_connection(void) {
 
 void denair_leds_set_muted(bool muted) {
   atomic_store(&s_muted, muted);
+}
+
+void denair_leds_set_power(bool on) {
+  bool prev = atomic_exchange(&s_powered, on);
+  if (prev == on) return;
+  if (on) {
+    gpio_set_level(LED_POWER_GPIO, 1);
+    atomic_store(&s_power_on_at_us, esp_timer_get_time());
+    ESP_LOGI(TAG, "LED power ON");
+  } else {
+    gpio_set_level(LED_POWER_GPIO, 0);
+    atomic_store(&s_power_on_at_us, 0);
+    ESP_LOGI(TAG, "LED power OFF");
+  }
+}
+
+bool denair_leds_is_powered(void) {
+  return atomic_load(&s_powered);
 }

@@ -29,6 +29,14 @@ typedef enum {
 
 esp_err_t denair_leds_init(void);
 
+/**
+ * Master LED power. Drives GPIO45 (the WS2812B VCC rail) and gates the
+ * render-task's strip refresh. Used by the mute-slide-switch repurpose
+ * on HA Voice PE: flipping the physical slide → turning the ring off.
+ */
+void denair_leds_set_power(bool on);
+bool denair_leds_is_powered(void);
+
 /** Set the base playback state that drives the PLAYING / IDLE visuals. */
 void denair_leds_set_playback_state(denair_playback_state_t state);
 

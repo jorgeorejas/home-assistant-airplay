@@ -142,6 +142,14 @@ esp_err_t denair_ui_init(void) {
     return err;
   }
 
+  /* Mute-slide switch on GPIO3 is repurposed as the LED on/off control.
+   * Non-fatal — if it fails the ring just stays in whatever state
+   * denair_leds_init left it (powered off). */
+  esp_err_t sw_err = denair_led_switch_start();
+  if (sw_err != ESP_OK) {
+    ESP_LOGW(TAG, "LED on/off switch init failed: %s", esp_err_to_name(sw_err));
+  }
+
   /* Register for AirPlay events so LED state follows playback. */
   rtsp_events_register(on_rtsp_event, NULL);
 
