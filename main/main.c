@@ -25,6 +25,8 @@
 #endif
 
 #include "iot_board.h"
+#include "denair_leds.h"
+#include "denair_ui.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -209,6 +211,22 @@ void app_main(void) {
   esp_err_t err = iot_board_init();
   if (err != ESP_OK) {
     ESP_LOGE(TAG, "Board init failed: %s", esp_err_to_name(err));
+  }
+
+  /* DenAir LED ring + encoder/button. Called here (not from iot_board_init)
+   * to keep the references in libmain.a, which is linked last — otherwise
+   * ESP-IDF's component graph puts libdenair_ui.a before libboards.a and
+   * the one-pass linker fails to resolve denair_ui_init from board.c.
+   * Failure is non-fatal: audio path works without the UI. */
+  esp_err_t led_err = denair_leds_init();
+  if (led_err != ESP_OK) {
+    ESP_LOGW(TAG, "LED ring init failed: %s (audio still works)",
+             esp_err_to_name(led_err));
+  }
+  esp_err_t ui_err = denair_ui_init();
+  if (ui_err != ESP_OK) {
+    ESP_LOGW(TAG, "UI init failed: %s (audio still works)",
+             esp_err_to_name(ui_err));
   }
 
   // Pass the board-owned bus to the display so it reuses it rather than

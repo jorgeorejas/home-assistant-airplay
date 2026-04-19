@@ -234,6 +234,13 @@ esp_err_t iot_board_init(void) {
 
   ESP_RETURN_ON_ERROR(dac_init(s_i2c_bus), TAG, "dac init");
 
+  /* DenAir LED ring + encoder/button init are called from main/main.c
+   * right after iot_board_init returns. Keeping those references out of
+   * libboards.a avoids a link-order issue with ESP-IDF's one-pass
+   * linker (denair_* libs get ordered before libboards.a in the
+   * component graph, so symbols referenced from inside libboards.a
+   * wouldn't resolve). */
+
   s_board_initialized = true;
   ESP_LOGI(TAG, "HA Voice PE initialized (DenAir)");
   return ESP_OK;

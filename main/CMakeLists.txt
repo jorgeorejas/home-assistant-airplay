@@ -89,6 +89,8 @@ set( DEPS
     boards
     dac
     dac_tas58xx
+    denair_leds
+    denair_ui
     display
     audio-resampler
     esp_eth
