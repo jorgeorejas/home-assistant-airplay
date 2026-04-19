@@ -1,10 +1,10 @@
 # LED UX spec
 
-The 12-pixel WS2812B ring on GPIO21 is the primary visual surface of DenAir. Its behaviour is defined by a six-state machine driven by audio, UI, and AirPlay session events. See `components/denair_leds/README.md` for the implementation.
+The 12-pixel WS2812B ring on GPIO21 is the primary visual surface of Home Assistant AirPlay. Its behaviour is defined by a six-state machine driven by audio, UI, and AirPlay session events. See `components/ha_airplay_leds/README.md` for the implementation.
 
 ## Power
 
-The ring's VCC rail is gated on GPIO45. When the slide on the side of the device (GPIO3) is in the **mute position** (active-low), the rail is driven HIGH and the ring powers up. In the opposite position the ring is dark — regardless of what the firmware *wants* to render. The slide's stock microphone-mute role is repurposed in DenAir because we don't use the microphone.
+The ring's VCC rail is gated on GPIO45. When the slide on the side of the device (GPIO3) is in the **mute position** (active-low), the rail is driven HIGH and the ring powers up. In the opposite position the ring is dark — regardless of what the firmware *wants* to render. The slide's stock microphone-mute role is repurposed in Home Assistant AirPlay because we don't use the microphone.
 
 There's a 15 ms LDO-settle wait after power-on before the first frame is clocked; below that, the first few pixels render corrupted.
 
@@ -23,13 +23,13 @@ Only the top applicable state renders. If you long-press (MUTE) while a volume c
 
 ## Beat detection
 
-See `components/denair_leds/README.md` for the DSP detail. In short: the audio playback task taps the PCM stream and applies a one-pole low-pass at ~150 Hz to isolate bass energy. Each frame's energy is compared to a ~1.6 s exponential moving average; when instantaneous energy exceeds 1.40× the average AND at least 250 ms has passed since the last beat, a beat fires.
+See `components/ha_airplay_leds/README.md` for the DSP detail. In short: the audio playback task taps the PCM stream and applies a one-pole low-pass at ~150 Hz to isolate bass energy. Each frame's energy is compared to a ~1.6 s exponential moving average; when instantaneous energy exceeds 1.40× the average AND at least 250 ms has passed since the last beat, a beat fires.
 
 Typical kick drums and bass lines trigger reliably. Sustained pads and soft music do not, which is fine — the flash should feel like a rhythmic accent, not a constant pulse.
 
 ## Artwork → hue
 
-AirPlay ships album artwork via RTSP SET_PARAMETER on every track change. `components/denair_artwork` decodes the JPEG at 1/8 scale (4096 pixels for a 512×512 source), computes mean RGB, and converts to HSV. If saturation > 0.18 and value > 0.12, the hue becomes the new PLAYING base colour. Below those thresholds the image is too muddy to extract a dominant hue from, and the engine falls back to the time-rotation.
+AirPlay ships album artwork via RTSP SET_PARAMETER on every track change. `components/ha_airplay_artwork` decodes the JPEG at 1/8 scale (4096 pixels for a 512×512 source), computes mean RGB, and converts to HSV. If saturation > 0.18 and value > 0.12, the hue becomes the new PLAYING base colour. Below those thresholds the image is too muddy to extract a dominant hue from, and the engine falls back to the time-rotation.
 
 The decode runs in a low-priority task on core 0 so it can't perturb audio. Latency from "iPhone shows new track" to "ring colour updates" is ~1 second in practice (RTSP artwork push + ~15 ms decode).
 

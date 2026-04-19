@@ -9,9 +9,9 @@
  * plenty for a mean-color estimate and takes ~15 ms on an idle core.
  */
 
-#include "denair_artwork.h"
+#include "ha_airplay_artwork.h"
 
-#include "denair_leds.h"
+#include "ha_airplay_leds.h"
 
 #include "esp32s3/rom/tjpgd.h"
 #include "esp_heap_caps.h"
@@ -24,7 +24,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-static const char TAG[] = "denair_artwork";
+static const char TAG[] = "ha_airplay_artwork";
 
 #define TJPGD_POOL_BYTES   3200     /* plenty for JD_USE_SCALE + JD_TBLCLIP */
 #define ARTWORK_QUEUE_LEN  2
@@ -149,7 +149,7 @@ static bool decode_and_publish(uint8_t *bytes, size_t len) {
   ESP_LOGI(TAG, "artwork mean RGB=(%.2f,%.2f,%.2f) → HSV=(%.0f°,%.2f,%.2f) vivid=%d",
            rf, gf, bf, h, s, v, vivid);
 
-  denair_leds_set_base_hue(h, vivid);
+  ha_airplay_leds_set_base_hue(h, vivid);
   return true;
 }
 
@@ -170,11 +170,11 @@ static void artwork_task(void *arg) {
 
 /* ---------- API ---------- */
 
-esp_err_t denair_artwork_init(void) {
+esp_err_t ha_airplay_artwork_init(void) {
   if (s_queue) return ESP_OK;
   s_queue = xQueueCreate(ARTWORK_QUEUE_LEN, sizeof(artwork_job_t));
   if (!s_queue) return ESP_ERR_NO_MEM;
-  BaseType_t ok = xTaskCreatePinnedToCore(artwork_task, "denair_art", 4096,
+  BaseType_t ok = xTaskCreatePinnedToCore(artwork_task, "ha_airplay_art", 4096,
                                           NULL, 3, &s_task, 0);
   if (ok != pdPASS) {
     vQueueDelete(s_queue);
@@ -185,7 +185,7 @@ esp_err_t denair_artwork_init(void) {
   return ESP_OK;
 }
 
-void denair_artwork_update(const uint8_t *bytes, size_t len,
+void ha_airplay_artwork_update(const uint8_t *bytes, size_t len,
                            const char *content_type) {
   if (!s_queue || !bytes || len == 0) return;
   if (len > ARTWORK_MAX_BYTES) {

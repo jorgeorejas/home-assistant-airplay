@@ -21,7 +21,7 @@
 #define ENCODER_A_GPIO 16
 #define ENCODER_B_GPIO 18
 
-static const char TAG[] = "denair_encoder";
+static const char TAG[] = "ha_airplay_encoder";
 
 static void (*s_on_turn)(int) = NULL;
 static TaskHandle_t s_task = NULL;
@@ -73,7 +73,7 @@ static void encoder_task(void *arg) {
   }
 }
 
-esp_err_t denair_encoder_start(void (*on_turn)(int)) {
+esp_err_t ha_airplay_encoder_start(void (*on_turn)(int)) {
   s_on_turn = on_turn;
 
   gpio_config_t cfg = {
@@ -86,7 +86,7 @@ esp_err_t denair_encoder_start(void (*on_turn)(int)) {
   esp_err_t err = gpio_config(&cfg);
   if (err != ESP_OK) return err;
 
-  BaseType_t ok = xTaskCreate(encoder_task, "denair_enc", 3072, NULL, 10, &s_task);
+  BaseType_t ok = xTaskCreate(encoder_task, "ha_airplay_enc", 3072, NULL, 10, &s_task);
   if (ok != pdPASS) return ESP_ERR_NO_MEM;
 
   err = gpio_install_isr_service(0);

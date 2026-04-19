@@ -1,9 +1,9 @@
 /**
  * @file led_switch.c
- * @brief Hardware mute slide-switch on GPIO3, repurposed in DenAir as
+ * @brief Hardware mute slide-switch on GPIO3, repurposed in Home Assistant AirPlay as
  *        the master on/off for the 12-LED ring.
  *
- * DenAir doesn't use the Voice PE's microphone, so the physical mute
+ * Home Assistant AirPlay doesn't use the Voice PE's microphone, so the physical mute
  * slider is free. HIGH level → LEDs powered on. LOW level → LEDs
  * powered off (GPIO45 VCC rail goes LOW). An ISR + small task handles
  * debounce; the initial state is read at boot so the ring reflects the
@@ -12,7 +12,7 @@
 
 #include "ui_internal.h"
 
-#include "denair_leds.h"
+#include "ha_airplay_leds.h"
 
 #include "driver/gpio.h"
 #include "esp_log.h"
@@ -23,7 +23,7 @@
 #define SWITCH_GPIO    3
 #define DEBOUNCE_MS    40
 
-static const char TAG[] = "denair_switch";
+static const char TAG[] = "ha_airplay_switch";
 
 static TaskHandle_t s_task = NULL;
 
@@ -37,7 +37,7 @@ static void IRAM_ATTR switch_isr(void *arg) {
 static void apply_state(int level) {
   /* LOW → LEDs on, HIGH → LEDs off. (Slide physically toward the mute
    * position → ring lights up. Polarity confirmed on bench 2026-04-19.) */
-  denair_leds_set_power(level == 0);
+  ha_airplay_leds_set_power(level == 0);
 }
 
 static void switch_task(void *arg) {
@@ -61,7 +61,7 @@ static void switch_task(void *arg) {
   }
 }
 
-esp_err_t denair_led_switch_start(void) {
+esp_err_t ha_airplay_led_switch_start(void) {
   gpio_config_t cfg = {
       .pin_bit_mask = (1ULL << SWITCH_GPIO),
       .mode = GPIO_MODE_INPUT,
@@ -72,7 +72,7 @@ esp_err_t denair_led_switch_start(void) {
   esp_err_t err = gpio_config(&cfg);
   if (err != ESP_OK) return err;
 
-  BaseType_t ok = xTaskCreate(switch_task, "denair_sw", 3072, NULL, 6, &s_task);
+  BaseType_t ok = xTaskCreate(switch_task, "ha_airplay_sw", 3072, NULL, 6, &s_task);
   if (ok != pdPASS) return ESP_ERR_NO_MEM;
 
   err = gpio_install_isr_service(0);

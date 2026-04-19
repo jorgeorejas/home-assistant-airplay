@@ -14,7 +14,7 @@ Board-support layer for the Home Assistant Voice Preview Edition, shaped to fit 
 ## What this board does *not* do
 
 - **Does not touch GPIO17 (jack detect)** — reserved for Phase 2 auto-switch between internal speaker and the jack.
-- **Does not touch GPIO45 (LED rail) or GPIO3 (mute slide)** — those are handled by `components/denair_leds/` and `components/denair_ui/led_switch.c` respectively, because they're LED-UX concerns, not board infra.
+- **Does not touch GPIO45 (LED rail) or GPIO3 (mute slide)** — those are handled by `components/ha_airplay_leds/` and `components/ha_airplay_ui/led_switch.c` respectively, because they're LED-UX concerns, not board infra.
 - **Does not initialise the LED ring or UI components**. Those `_init` calls live in `main/main.c` for link-order reasons (see [../../../docs/architecture.md](../../../docs/architecture.md) "Link order trick").
 
 ## Why the pin defines are baked in, not `CONFIG_…`
@@ -33,21 +33,21 @@ The upstream airplay-esp32 board abstraction reads `CONFIG_I2S_BCK_IO` / `CONFIG
 Bring-up check after any edit:
 
 ```bash
-tools/denair-build.sh build
-tools/denair-build.sh flash
-tools/denair-build.sh monitor
+tools/ha-airplay-build.sh build
+tools/ha-airplay-build.sh flash
+tools/ha-airplay-build.sh monitor
 ```
 
 Expected boot log (abridged):
 
 ```
-I (1082) main: Board: HA Voice PE (DenAir)
+I (1082) main: Board: HA Voice PE (Home Assistant AirPlay)
 I (1092) HA-Voice-PE: seeded WiFi credentials for SSID='…' from wifi_config.h
 I (1102) HA-Voice-PE: WiFi fallback: armed (swap SSID after 25000 ms if not connected)
 I (1112) gpio: GPIO[47]| InputEn: 0| OutputEn: 1| …
 I (1122) HA-Voice-PE: I2C bus 0 up (sda=5 scl=6)
 I (3632) AIC3204: AIC3204 online @ 0x18
-I (3632) HA-Voice-PE: HA Voice PE initialized (DenAir)
+I (3632) HA-Voice-PE: HA Voice PE initialized (Home Assistant AirPlay)
 ```
 
 `AIC3204 online @ 0x18` proves both the I²C bus *and* the DAC are reachable on their pins. If it doesn't appear, the fault is on this module or the DAC driver.

@@ -1,6 +1,6 @@
 /**
  * @file leds.c
- * @brief DenAir 12-LED WS2812B ring engine.
+ * @brief Home Assistant AirPlay 12-LED WS2812B ring engine.
  *
  * Renders at 50 Hz on core 1. State machine:
  *   MUTE (priority 1)  two dim red pixels.
@@ -8,11 +8,11 @@
  *   CONN_IN (prio 3)   5 s white rotating sweep on new AirPlay client.
  *   CONN_OUT (prio 3)  2 s dim red fade-out on disconnect.
  *   PLAYING (prio 4)   rotating base hue + whole-ring flash on each beat
- *                      detected by denair_audio_tap.
+ *                      detected by ha_airplay_audio_tap.
  *   IDLE (prio 5)      slow amber breath.
  */
 
-#include "denair_leds.h"
+#include "ha_airplay_leds.h"
 #include "leds_internal.h"
 
 #include "driver/gpio.h"
@@ -40,13 +40,13 @@
 #define CONN_OUT_MS      2000
 #define BEAT_DECAY_MS    400     /* exp decay time constant */
 
-static const char TAG[] = "denair_leds";
+static const char TAG[] = "ha_airplay_leds";
 
 static led_strip_handle_t s_strip = NULL;
 static TaskHandle_t s_task = NULL;
 
 /* Atomic state shared between API setters and render task */
-static _Atomic int s_playback_state = DENAIR_PLAYBACK_IDLE;
+static _Atomic int s_playback_state = HA_AIRPLAY_PLAYBACK_IDLE;
 static _Atomic int s_volume_fill_x1000 = 500;
 static _Atomic int64_t s_volume_overlay_until_us = 0;
 static _Atomic int64_t s_conn_in_until_us = 0;
@@ -175,7 +175,7 @@ static void render_playing(int64_t now_us) {
 
   /* Beat flash: when audio_tap fires a new beat, start an exponential
    * decay. Decay factor decays toward 0 with time constant BEAT_DECAY_MS. */
-  int64_t last_beat_us = denair_audio_last_beat_us();
+  int64_t last_beat_us = ha_airplay_audio_last_beat_us();
   if (last_beat_us > s_last_rendered_beat_us) {
     s_last_rendered_beat_us = last_beat_us;
     s_last_beat_flash_us = last_beat_us;
@@ -189,7 +189,7 @@ static void render_playing(int64_t now_us) {
 
   /* Slight RMS-driven breathing on the base brightness so quiet passages
    * don't look static. */
-  uint32_t rms_q24 = denair_audio_rms_q24();
+  uint32_t rms_q24 = ha_airplay_audio_rms_q24();
   float rms_norm = (float)rms_q24 / (float)(1 << 20); /* 0..16, clamp */
   if (rms_norm > 1.0f) rms_norm = 1.0f;
   float base_bright = 0.15f + 0.20f * rms_norm;
@@ -242,7 +242,7 @@ static void led_task(void *arg) {
       render_conn_out(now, atomic_load(&s_conn_out_until_us));
     } else {
       int state = atomic_load(&s_playback_state);
-      if (state == DENAIR_PLAYBACK_PLAYING) {
+      if (state == HA_AIRPLAY_PLAYBACK_PLAYING) {
         render_playing(now);
       } else {
         render_idle(now);
@@ -256,7 +256,7 @@ static void led_task(void *arg) {
 
 /* ---------- API ---------- */
 
-esp_err_t denair_leds_init(void) {
+esp_err_t ha_airplay_leds_init(void) {
   if (s_strip) return ESP_OK;
 
   /* Configure the LED VCC rail on GPIO45 as output. Start LOW (ring off)
@@ -294,7 +294,7 @@ esp_err_t denair_leds_init(void) {
   led_strip_clear(s_strip);
   led_strip_refresh(s_strip);
 
-  BaseType_t ok = xTaskCreatePinnedToCore(led_task, "denair_leds", 4096, NULL,
+  BaseType_t ok = xTaskCreatePinnedToCore(led_task, "ha_airplay_leds", 4096, NULL,
                                           3, &s_task, 1);
   if (ok != pdPASS) return ESP_ERR_NO_MEM;
   ESP_LOGI(TAG, "LED ring up (GPIO %d, %d pixels, %d Hz)", LED_GPIO,
@@ -302,19 +302,19 @@ esp_err_t denair_leds_init(void) {
   return ESP_OK;
 }
 
-void denair_leds_set_playback_state(denair_playback_state_t state) {
+void ha_airplay_leds_set_playback_state(ha_airplay_playback_state_t state) {
   int prev = atomic_exchange(&s_playback_state,
-                             (state == DENAIR_PLAYBACK_DISCONNECTED
-                                  ? DENAIR_PLAYBACK_IDLE
+                             (state == HA_AIRPLAY_PLAYBACK_DISCONNECTED
+                                  ? HA_AIRPLAY_PLAYBACK_IDLE
                                   : state));
   (void)prev;
-  if (state == DENAIR_PLAYBACK_DISCONNECTED) {
+  if (state == HA_AIRPLAY_PLAYBACK_DISCONNECTED) {
     atomic_store(&s_conn_out_until_us,
                  esp_timer_get_time() + (int64_t)CONN_OUT_MS * 1000);
   }
 }
 
-void denair_leds_show_volume(float fraction, int hold_ms) {
+void ha_airplay_leds_show_volume(float fraction, int hold_ms) {
   if (!s_strip) return;
   if (fraction < 0.0f) fraction = 0.0f;
   if (fraction > 1.0f) fraction = 1.0f;
@@ -323,17 +323,17 @@ void denair_leds_show_volume(float fraction, int hold_ms) {
                esp_timer_get_time() + (int64_t)hold_ms * 1000);
 }
 
-void denair_leds_flash_connection(void) {
+void ha_airplay_leds_flash_connection(void) {
   if (!s_strip) return;
   atomic_store(&s_conn_in_until_us,
                esp_timer_get_time() + (int64_t)CONN_IN_MS * 1000);
 }
 
-void denair_leds_set_muted(bool muted) {
+void ha_airplay_leds_set_muted(bool muted) {
   atomic_store(&s_muted, muted);
 }
 
-void denair_leds_set_power(bool on) {
+void ha_airplay_leds_set_power(bool on) {
   bool prev = atomic_exchange(&s_powered, on);
   if (prev == on) return;
   if (on) {
@@ -347,11 +347,11 @@ void denair_leds_set_power(bool on) {
   }
 }
 
-bool denair_leds_is_powered(void) {
+bool ha_airplay_leds_is_powered(void) {
   return atomic_load(&s_powered);
 }
 
-void denair_leds_set_base_hue(float hue_deg, bool enabled) {
+void ha_airplay_leds_set_base_hue(float hue_deg, bool enabled) {
   if (hue_deg < 0.0f) hue_deg += 360.0f;
   if (hue_deg >= 360.0f) hue_deg = fmodf(hue_deg, 360.0f);
   atomic_store(&s_base_hue_centideg, (int32_t)(hue_deg * 100.0f));

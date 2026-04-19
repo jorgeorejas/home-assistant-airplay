@@ -4,7 +4,7 @@ node_modules/
 .env.local
 *.log
 
-# ESPHome legacy (pre-DenAir pivot)
+# ESPHome legacy (pre-Home Assistant AirPlay pivot)
 secrets.yaml
 .esphome/
 
@@ -14,7 +14,7 @@ managed_components/
 sdkconfig
 sdkconfig.old
 
-# DenAir WiFi credentials — never commit
+# Home Assistant AirPlay WiFi credentials — never commit
 wifi_config.h
 
 # Phase 0 heap-probe CSVs

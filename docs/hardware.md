@@ -16,13 +16,13 @@ Target: **Home Assistant Voice Preview Edition** (NC-VK-9727). No hardware modif
 | Component | Part | Note |
 |---|---|---|
 | MCU | ESP32-S3R8 | dual Xtensa LX7 @ 240 MHz, 8 MB octal PSRAM @ 80 MHz, 16 MB flash |
-| Mic pre-processor | XMOS XU316 | unused in DenAir; idle on the I²S bus |
+| Mic pre-processor | XMOS XU316 | unused in Home Assistant AirPlay; idle on the I²S bus |
 | Audio codec / DAC | TI TLV320AIC3204 | I²S slave, I²C control on 0x18 |
 | Speaker amp | TPA6211A | internal 8 Ω speaker driver, enable on GPIO47 |
 | Output | 3.5 mm stereo jack | switched output; detect line on GPIO17 (Phase 2) |
 | LED ring | 12 × WS2812B | GPIO21 data, GPIO45 gated VCC rail |
 | User input | Rotary encoder + push button | encoder A/B on GPIO16/18, button on GPIO0 |
-| User input | Side slide switch | GPIO3, active-low. Physical mute in stock firmware; **repurposed as LED on/off in DenAir** |
+| User input | Side slide switch | GPIO3, active-low. Physical mute in stock firmware; **repurposed as LED on/off in Home Assistant AirPlay** |
 
 ## Pin map
 
@@ -43,7 +43,7 @@ Authoritative source: [docs/home-assistant-voice-pe-dev/home-assistant-voice.yam
 | Rotary encoder A | 16 | in, pull-up | quadrature, 4 edges = 1 detent |
 | Rotary encoder B | 18 | in, pull-up | |
 | Center button | 0 | in, pull-up | active-low, strapping pin |
-| Mute slide switch | 3 | in, pull-up | active-low = LEDs on (DenAir), mic mute in stock |
+| Mute slide switch | 3 | in, pull-up | active-low = LEDs on (Home Assistant AirPlay), mic mute in stock |
 | USB CDC | internal | in/out | native ESP32-S3 USB; primary console via USB_SERIAL_JTAG secondary |
 
 ## Power & thermals
@@ -54,7 +54,7 @@ Authoritative source: [docs/home-assistant-voice-pe-dev/home-assistant-voice.yam
 
 ## Enclosure
 
-The stock 3D-printed case is preserved — see `voice_preview_edition_enclosure_all_parts.stl` if you want to print a replacement. The DenAir firmware does not require any physical modification to the enclosure.
+The stock 3D-printed case is preserved — see `voice_preview_edition_enclosure_all_parts.stl` if you want to print a replacement. The Home Assistant AirPlay firmware does not require any physical modification to the enclosure.
 
 ## Schematic & datasheet
 

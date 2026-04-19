@@ -1,6 +1,6 @@
 /**
  * @file ui.c
- * @brief DenAir UI coordinator.
+ * @brief Home Assistant AirPlay UI coordinator.
  *
  * Button mapping (modern-iOS reality: DACP headers aren't sent to
  * non-MFi devices, so play/pause and track controls can't reach the
@@ -17,11 +17,11 @@
  *                    (local DAC volume + attempts DACP push to iPhone slider)
  */
 
-#include "denair_ui.h"
+#include "ha_airplay_ui.h"
 #include "ui_internal.h"
 
 #include "dac.h"
-#include "denair_leds.h"
+#include "ha_airplay_leds.h"
 #include "playback_control.h"
 #include "rtsp_events.h"
 #include "settings.h"
@@ -33,7 +33,7 @@
 #include <math.h>
 #include <stdatomic.h>
 
-static const char TAG[] = "denair_ui";
+static const char TAG[] = "ha_airplay_ui";
 
 #define VOL_MIN_DB (-30.0f)
 #define VOL_MAX_DB (0.0f)
@@ -53,7 +53,7 @@ static float current_volume_fraction(void) {
 }
 
 static void show_current_volume_on_leds(int hold_ms) {
-  denair_leds_show_volume(current_volume_fraction(), hold_ms);
+  ha_airplay_leds_show_volume(current_volume_fraction(), hold_ms);
 }
 
 /* ---------- Encoder ---------- */
@@ -67,7 +67,7 @@ static void on_encoder_turn(int direction) {
   /* Turning the encoder always clears hard-mute. */
   if (atomic_exchange(&s_hard_muted, false)) {
     dac_set_power_mode(DAC_POWER_ON);
-    denair_leds_set_muted(false);
+    ha_airplay_leds_set_muted(false);
   }
   show_current_volume_on_leds(2000);
 }
@@ -94,7 +94,7 @@ static void on_button_long(void) {
   atomic_store(&s_hard_muted, now_muted);
   ESP_LOGI(TAG, "button: long → %s (local)", now_muted ? "muted" : "unmuted");
   dac_set_power_mode(now_muted ? DAC_POWER_STANDBY : DAC_POWER_ON);
-  denair_leds_set_muted(now_muted);
+  ha_airplay_leds_set_muted(now_muted);
 }
 
 /* ---------- RTSP → LED state ---------- */
@@ -106,20 +106,20 @@ static void on_rtsp_event(rtsp_event_t event, const rtsp_event_data_t *data,
   switch (event) {
   case RTSP_EVENT_CLIENT_CONNECTED:
     ESP_LOGI(TAG, "AirPlay client connected → LED connection flash");
-    denair_leds_flash_connection();
-    denair_leds_set_playback_state(DENAIR_PLAYBACK_CONNECTED);
+    ha_airplay_leds_flash_connection();
+    ha_airplay_leds_set_playback_state(HA_AIRPLAY_PLAYBACK_CONNECTED);
     break;
   case RTSP_EVENT_PLAYING:
     ESP_LOGI(TAG, "AirPlay playing → LED beat-pulse mode");
-    denair_leds_set_playback_state(DENAIR_PLAYBACK_PLAYING);
+    ha_airplay_leds_set_playback_state(HA_AIRPLAY_PLAYBACK_PLAYING);
     break;
   case RTSP_EVENT_PAUSED:
     ESP_LOGI(TAG, "AirPlay paused → LED idle");
-    denair_leds_set_playback_state(DENAIR_PLAYBACK_PAUSED);
+    ha_airplay_leds_set_playback_state(HA_AIRPLAY_PLAYBACK_PAUSED);
     break;
   case RTSP_EVENT_DISCONNECTED:
     ESP_LOGI(TAG, "AirPlay disconnected → LED disconnect flash + idle");
-    denair_leds_set_playback_state(DENAIR_PLAYBACK_DISCONNECTED);
+    ha_airplay_leds_set_playback_state(HA_AIRPLAY_PLAYBACK_DISCONNECTED);
     break;
   case RTSP_EVENT_METADATA:
     break;
@@ -135,7 +135,7 @@ static void volume_poll_task(void *arg) {
     vTaskDelay(pdMS_TO_TICKS(200));
     float now = current_volume_fraction();
     if (fabsf(now - last) > 0.005f) {
-      denair_leds_show_volume(now, 2000);
+      ha_airplay_leds_show_volume(now, 2000);
       last = now;
     }
   }
@@ -143,33 +143,33 @@ static void volume_poll_task(void *arg) {
 
 /* ---------- Init ---------- */
 
-esp_err_t denair_ui_init(void) {
-  esp_err_t err = denair_encoder_start(on_encoder_turn);
+esp_err_t ha_airplay_ui_init(void) {
+  esp_err_t err = ha_airplay_encoder_start(on_encoder_turn);
   if (err != ESP_OK) {
     ESP_LOGE(TAG, "encoder start: %s", esp_err_to_name(err));
     return err;
   }
 
-  denair_button_callbacks_t btn_cbs = {
+  ha_airplay_button_callbacks_t btn_cbs = {
       .short_cb = on_button_short,
       .double_cb = on_button_double,
       .triple_cb = on_button_triple,
       .long_cb = on_button_long,
   };
-  err = denair_button_start(&btn_cbs);
+  err = ha_airplay_button_start(&btn_cbs);
   if (err != ESP_OK) {
     ESP_LOGE(TAG, "button start: %s", esp_err_to_name(err));
     return err;
   }
 
-  esp_err_t sw_err = denair_led_switch_start();
+  esp_err_t sw_err = ha_airplay_led_switch_start();
   if (sw_err != ESP_OK) {
     ESP_LOGW(TAG, "LED on/off switch init failed: %s", esp_err_to_name(sw_err));
   }
 
   rtsp_events_register(on_rtsp_event, NULL);
 
-  BaseType_t ok = xTaskCreate(volume_poll_task, "denair_volpoll", 3072, NULL,
+  BaseType_t ok = xTaskCreate(volume_poll_task, "ha_airplay_volpoll", 3072, NULL,
                               4, NULL);
   if (ok != pdPASS) {
     ESP_LOGW(TAG, "volume poll task: out of memory");

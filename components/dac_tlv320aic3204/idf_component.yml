@@ -1,4 +1,4 @@
-## Added by DenAir — pulls nothing external yet, but keeps the shape of
+## Added by Home Assistant AirPlay — pulls nothing external yet, but keeps the shape of
 ## sibling DAC drivers consistent.
 dependencies:
   idf: ">=5.3"

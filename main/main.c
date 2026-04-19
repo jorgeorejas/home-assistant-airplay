@@ -25,9 +25,9 @@
 #endif
 
 #include "iot_board.h"
-#include "denair_artwork.h"
-#include "denair_leds.h"
-#include "denair_ui.h"
+#include "ha_airplay_artwork.h"
+#include "ha_airplay_leds.h"
+#include "ha_airplay_ui.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -214,17 +214,17 @@ void app_main(void) {
     ESP_LOGE(TAG, "Board init failed: %s", esp_err_to_name(err));
   }
 
-  /* DenAir LED ring + encoder/button. Called here (not from iot_board_init)
+  /* Home Assistant AirPlay LED ring + encoder/button. Called here (not from iot_board_init)
    * to keep the references in libmain.a, which is linked last — otherwise
-   * ESP-IDF's component graph puts libdenair_ui.a before libboards.a and
-   * the one-pass linker fails to resolve denair_ui_init from board.c.
+   * ESP-IDF's component graph puts libha_airplay_ui.a before libboards.a and
+   * the one-pass linker fails to resolve ha_airplay_ui_init from board.c.
    * Failure is non-fatal: audio path works without the UI. */
-  esp_err_t led_err = denair_leds_init();
+  esp_err_t led_err = ha_airplay_leds_init();
   if (led_err != ESP_OK) {
     ESP_LOGW(TAG, "LED ring init failed: %s (audio still works)",
              esp_err_to_name(led_err));
   }
-  esp_err_t ui_err = denair_ui_init();
+  esp_err_t ui_err = ha_airplay_ui_init();
   if (ui_err != ESP_OK) {
     ESP_LOGW(TAG, "UI init failed: %s (audio still works)",
              esp_err_to_name(ui_err));
@@ -232,7 +232,7 @@ void app_main(void) {
 
   /* Artwork-hue extractor. Non-fatal; if decode fails the LED engine
    * just keeps its time-based rotation. */
-  esp_err_t art_err = denair_artwork_init();
+  esp_err_t art_err = ha_airplay_artwork_init();
   if (art_err != ESP_OK) {
     ESP_LOGW(TAG, "artwork init failed: %s", esp_err_to_name(art_err));
   }

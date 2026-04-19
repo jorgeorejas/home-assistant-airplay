@@ -6,16 +6,16 @@
 #include <stdint.h>
 
 /**
- * DenAir artwork → LED-hue extractor.
+ * Home Assistant AirPlay artwork → LED-hue extractor.
  *
  * AirPlay sends JPEG album artwork (~180 KB typical) via RTSP. We copy
  * the bytes into PSRAM, hand them to a decoder task that runs tjpgd
  * (from the ESP32-S3 ROM — free flash), accumulates mean RGB across
  * the decoded image, converts to HSV, and publishes the dominant hue
- * to denair_leds as the PLAYING-mode base color.
+ * to ha_airplay_leds as the PLAYING-mode base color.
  */
 
-esp_err_t denair_artwork_init(void);
+esp_err_t ha_airplay_artwork_init(void);
 
 /**
  * Queue a newly-received JPEG for analysis.
@@ -25,5 +25,5 @@ esp_err_t denair_artwork_init(void);
  * @param content_type  MIME string ("image/jpeg" or "image/png"; PNG is
  *                      currently skipped — hue stays at the last value)
  */
-void denair_artwork_update(const uint8_t *bytes, size_t len,
+void ha_airplay_artwork_update(const uint8_t *bytes, size_t len,
                            const char *content_type);

@@ -26,8 +26,8 @@
 
 ## Surprises from the bench
 
-- **Upstream link ordering** puts the DenAir component libs before `libboards.a` in the component graph, so references from `boards/ha_voice_pe/board.c` to `denair_ui_init` don't resolve in ESP-IDF's one-pass linker. Fix: move the init calls into `main/main.c`, which builds into `libmain.a` (linked last).
-- **Kconfig choice propagation**: `idf.py set-target` discovers its own defaults and locks choice options *before* `tools/denair-build.sh` has a chance to layer `sdkconfig.defaults.ha_voice_pe`. Had to plumb `SDKCONFIG_DEFAULTS` through the environment in the build wrapper.
+- **Upstream link ordering** puts the Home Assistant AirPlay component libs before `libboards.a` in the component graph, so references from `boards/ha_voice_pe/board.c` to `ha_airplay_ui_init` don't resolve in ESP-IDF's one-pass linker. Fix: move the init calls into `main/main.c`, which builds into `libmain.a` (linked last).
+- **Kconfig choice propagation**: `idf.py set-target` discovers its own defaults and locks choice options *before* `tools/ha-airplay-build.sh` has a chance to layer `sdkconfig.defaults.ha_voice_pe`. Had to plumb `SDKCONFIG_DEFAULTS` through the environment in the build wrapper.
 - **DACP is gone from modern iOS**. Upstream supports `CONFIG_AIRPLAY_FORCE_V1=y` for bidirectional volume, but modern iOS (17+) no longer sends DACP-ID headers to non-MFi receivers even in AP1 mode. Rolled back to AP2. Device → iPhone slider sync is now an accepted protocol limitation.
 - **WS2812B VCC is switched**, not continuous — the whole reason "LEDs aren't lighting" took ten minutes to diagnose. GPIO45 gates the rail. Repurposed the mic-mute slide (GPIO3) as the user-facing on/off for the ring.
 - **RMS-scale tuning for the audio tap**: initial scaling made even quiet passages look bright. Recomputed the `sat_i32_from_u64_sqrt` mapping against real iPhone audio levels during bench testing.
@@ -37,26 +37,26 @@
 Bench-captured logs from the final Phase 1 firmware:
 
 ```
-I (3641) denair_leds: LED ring up (GPIO 21, 12 pixels, 50 Hz)
-I (3661) denair_encoder: encoder ready (A=16 B=18, 4 quad-edges / detent)
-I (3681) denair_button: center button ready (GPIO 0, short/double/triple/long)
-I (3711) denair_switch: mute-slide switch seeded: level=0 → LEDs ON
-I (3731) denair_ui: UI ready
+I (3641) ha_airplay_leds: LED ring up (GPIO 21, 12 pixels, 50 Hz)
+I (3661) ha_airplay_encoder: encoder ready (A=16 B=18, 4 quad-edges / detent)
+I (3681) ha_airplay_button: center button ready (GPIO 0, short/double/triple/long)
+I (3711) ha_airplay_switch: mute-slide switch seeded: level=0 → LEDs ON
+I (3731) ha_airplay_ui: UI ready
 
 I (16196) wifi:connected with Wireless_CASA, rssi: -52
 I (18116) main: AirPlay ready
 
-I (47651) denair_ui: AirPlay playing → LED beat-pulse mode
+I (47651) ha_airplay_ui: AirPlay playing → LED beat-pulse mode
 I (54732) audio_rt: Free heap: 168311 internal, 5487504 SPIRAM
 I (58582) rtsp_handlers: Album = NO ME QUIERO MORIR NUNCA
 I (58582) rtsp_handlers:   Artist = RATA
 I (58582) rtsp_handlers:   Title  = DEJARSE LOS NUDILLOS
 
-I (58595) denair_artwork: decoding 512×512 JPEG (scale 1/8, 180224 B)
-I (58611) denair_artwork: artwork mean RGB=(0.21,0.07,0.04) → HSV=(18°,0.81,0.21) vivid=1
+I (58595) ha_airplay_artwork: decoding 512×512 JPEG (scale 1/8, 180224 B)
+I (58611) ha_airplay_artwork: artwork mean RGB=(0.21,0.07,0.04) → HSV=(18°,0.81,0.21) vivid=1
 
 I (142256) playback_ctrl: AirPlay volume: -24.8 -> -21.8 dB   [encoder turn]
-I (147136) denair_ui: button short press → muted                [play/pause]
+I (147136) ha_airplay_ui: button short press → muted                [play/pause]
 ```
 
 ## What's next (Phase 2)

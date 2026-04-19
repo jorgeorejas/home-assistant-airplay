@@ -13,8 +13,8 @@
 #include "board_common.h"
 #include "sdkconfig.h"
 
-#define BOARD_NAME        "HA Voice PE (DenAir)"
-#define BOARD_DESCRIPTION "Home Assistant Voice Preview Edition + TLV320AIC3204 DAC, DenAir firmware"
+#define BOARD_NAME        "HA Voice PE (Home Assistant AirPlay)"
+#define BOARD_DESCRIPTION "Home Assistant Voice Preview Edition + TLV320AIC3204 DAC, Home Assistant AirPlay firmware"
 
 /* ---- I2S (ESP32-S3 master-out to AIC3204 DAC) ---- */
 #define BOARD_I2S_BCK_GPIO 8   /* bit clock */
@@ -29,12 +29,12 @@
 #define BOARD_SPDIF_WS_GPIO  -1
 #define BOARD_SPDIF_DO_GPIO  -1
 
-/* ---- LEDs: addressable 12-LED WS2812B ring driven by DenAir's own engine
+/* ---- LEDs: addressable 12-LED WS2812B ring driven by Home Assistant AirPlay's own engine
  *           (not the upstream single-status indicator). Point upstream at -1
  *           so it does not claim the pin. ---- */
 #define BOARD_LED_STATUS_GPIO -1
 #define BOARD_LED_ERROR_GPIO  -1
-#define BOARD_LED_RGB_GPIO    -1   /* DenAir LED engine uses GPIO21 directly */
+#define BOARD_LED_RGB_GPIO    -1   /* Home Assistant AirPlay LED engine uses GPIO21 directly */
 
 /* ---- Jack detect + internal amp enable ---- */
 #define BOARD_JACK_GPIO        17  /* 3.5 mm jack detect (200 ms debounce) */
@@ -44,9 +44,9 @@
 /* ---- LED ring power rail ---- */
 #define BOARD_LED_POWER_GPIO   45  /* switched VCC for the WS2812B ring (HIGH = on) */
 
-/* ---- Hardware mute slide switch (repurposed in DenAir) ---- */
+/* ---- Hardware mute slide switch (repurposed in Home Assistant AirPlay) ---- */
 #define BOARD_MUTE_SWITCH_GPIO 3   /* LOW = LEDs on, HIGH = LEDs off */
-/* DenAir handles amp enable in our DAC driver's enable_speaker op, not via
+/* Home Assistant AirPlay handles amp enable in our DAC driver's enable_speaker op, not via
  * upstream's generic MUTE_GPIO path. */
 #define BOARD_MUTE_GPIO        -1
 #define BOARD_MUTE_GPIO_LEVEL  0
@@ -56,7 +56,7 @@
 #define BOARD_I2C_SDA_GPIO 5
 #define BOARD_I2C_SCL_GPIO 6
 
-/* ---- Rotary encoder (DenAir UI) ---- */
+/* ---- Rotary encoder (Home Assistant AirPlay UI) ---- */
 #define BOARD_ENCODER_A_GPIO  16
 #define BOARD_ENCODER_B_GPIO  18
 

@@ -1,4 +1,4 @@
-# `denair_leds`
+# `ha_airplay_leds`
 
 The 12-pixel WS2812B ring engine. Renders at 50 Hz on core 1, reads from a handful of atomic state variables set by the UI / artwork / AirPlay-event paths, and drives the pixels over RMT.
 
@@ -48,20 +48,20 @@ Private glue between `audio_tap.c` and `leds.c` so their contract isn't exposed 
 
 ## Power rail
 
-`denair_leds_set_power(bool)` drives GPIO45 HIGH/LOW. On power-on, the render task sleeps for 15 ms (`LED_POWER_SETTLE_MS`) before refreshing, giving the rail's LDO and bypass cap time to stabilise. Without the settle the first frame shows a garbled green artifact.
+`ha_airplay_leds_set_power(bool)` drives GPIO45 HIGH/LOW. On power-on, the render task sleeps for 15 ms (`LED_POWER_SETTLE_MS`) before refreshing, giving the rail's LDO and bypass cap time to stabilise. Without the settle the first frame shows a garbled green artifact.
 
-## Public API (`include/denair_leds.h`)
+## Public API (`include/ha_airplay_leds.h`)
 
 | Symbol | Called from | Effect |
 |---|---|---|
-| `denair_leds_init()` | `main/main.c` | creates the RMT strip handle, arms GPIO45 as output, starts the render task |
-| `denair_leds_set_power(bool)` | `components/denair_ui/led_switch.c` (mute slide) | drives GPIO45 |
-| `denair_leds_set_playback_state(state)` | `components/denair_ui/ui.c` (RTSP events) | idle / connected / playing / paused / disconnected |
-| `denair_leds_show_volume(fraction, hold_ms)` | encoder and iOS-volume poll | volume overlay |
-| `denair_leds_flash_connection()` | `RTSP_EVENT_CLIENT_CONNECTED` | 5 s sweep |
-| `denair_leds_set_muted(bool)` | long-press button | mute indicator |
-| `denair_leds_set_base_hue(hue_deg, enabled)` | `components/denair_artwork/artwork.c` | override PLAYING base colour |
-| `denair_audio_tap(samples, stereo_frames)` | `main/audio/audio_output.c:playback_task` | feed PCM to the beat detector |
+| `ha_airplay_leds_init()` | `main/main.c` | creates the RMT strip handle, arms GPIO45 as output, starts the render task |
+| `ha_airplay_leds_set_power(bool)` | `components/ha_airplay_ui/led_switch.c` (mute slide) | drives GPIO45 |
+| `ha_airplay_leds_set_playback_state(state)` | `components/ha_airplay_ui/ui.c` (RTSP events) | idle / connected / playing / paused / disconnected |
+| `ha_airplay_leds_show_volume(fraction, hold_ms)` | encoder and iOS-volume poll | volume overlay |
+| `ha_airplay_leds_flash_connection()` | `RTSP_EVENT_CLIENT_CONNECTED` | 5 s sweep |
+| `ha_airplay_leds_set_muted(bool)` | long-press button | mute indicator |
+| `ha_airplay_leds_set_base_hue(hue_deg, enabled)` | `components/ha_airplay_artwork/artwork.c` | override PLAYING base colour |
+| `ha_airplay_audio_tap(samples, stereo_frames)` | `main/audio/audio_output.c:playback_task` | feed PCM to the beat detector |
 
 ## Why core 1
 

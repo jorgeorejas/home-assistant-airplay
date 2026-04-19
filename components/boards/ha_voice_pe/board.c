@@ -1,6 +1,6 @@
 /**
  * @file board.c
- * @brief HA Voice PE (DenAir) board init
+ * @brief HA Voice PE (Home Assistant AirPlay) board init
  *
  * Phase 0 scope: bring up I2C to the TLV320AIC3204 DAC, configure the
  * internal-speaker amp GPIO, seed WiFi credentials from wifi_config.h
@@ -25,9 +25,9 @@
 
 #if __has_include("wifi_config.h")
 # include "wifi_config.h"
-# define DENAIR_HAVE_WIFI_CONFIG 1
+# define HA_AIRPLAY_HAVE_WIFI_CONFIG 1
 #else
-# define DENAIR_HAVE_WIFI_CONFIG 0
+# define HA_AIRPLAY_HAVE_WIFI_CONFIG 0
 #endif
 
 #ifndef WIFI_CONNECT_TIMEOUT_MS
@@ -43,7 +43,7 @@ static i2c_master_bus_handle_t s_i2c_bus = NULL;
 /*  WiFi two-SSID fallback supervisor                                  */
 /* ------------------------------------------------------------------ */
 
-#if DENAIR_HAVE_WIFI_CONFIG
+#if HA_AIRPLAY_HAVE_WIFI_CONFIG
 typedef struct {
   const char *ssid;
   const char *password;
@@ -123,7 +123,7 @@ static void start_wifi_fallback_supervisor(void) {
 
   const esp_timer_create_args_t args = {
       .callback = wifi_fallback_tick,
-      .name = "denair_wifi_fb",
+      .name = "ha_airplay_wifi_fb",
   };
   esp_err_t err = esp_timer_create(&args, &s_wifi_fallback_timer);
   if (err != ESP_OK) {
@@ -136,15 +136,15 @@ static void start_wifi_fallback_supervisor(void) {
   ESP_LOGI(TAG, "WiFi fallback: armed (swap SSID after %d ms if not connected)",
            WIFI_CONNECT_TIMEOUT_MS);
 }
-#endif /* DENAIR_HAVE_WIFI_CONFIG */
+#endif /* HA_AIRPLAY_HAVE_WIFI_CONFIG */
 
-/* Seed NVS WiFi credentials from wifi_config.h (DenAir hardcodes them at
+/* Seed NVS WiFi credentials from wifi_config.h (Home Assistant AirPlay hardcodes them at
  * compile time per the PRD — captive portal is a fallback only). Runs on
  * every boot so re-flashing with updated credentials is the source of truth.
  * Falls through to upstream captive-portal behaviour if wifi_config.h is
  * absent or WIFI_SSID_1 is empty. */
 static void seed_wifi_credentials_from_config(void) {
-#if DENAIR_HAVE_WIFI_CONFIG
+#if HA_AIRPLAY_HAVE_WIFI_CONFIG
   int first = next_configured_net(-1);
   if (first < 0) {
     ESP_LOGW(TAG, "wifi_config.h present but no non-empty SSID found; "
@@ -193,7 +193,7 @@ static esp_err_t configure_amp_enable_gpio(void) {
       .intr_type = GPIO_INTR_DISABLE,
   };
   ESP_RETURN_ON_ERROR(gpio_config(&cfg), TAG, "amp enable gpio config");
-  /* Start with the internal amp ON. DenAir's jack-detect logic flips this to
+  /* Start with the internal amp ON. Home Assistant AirPlay's jack-detect logic flips this to
    * LOW when the 3.5 mm jack is inserted (Phase 1). */
   ESP_RETURN_ON_ERROR(gpio_set_level(BOARD_AMP_ENABLE_GPIO, 1), TAG,
                       "amp enable default high");
@@ -207,7 +207,7 @@ esp_err_t iot_board_init(void) {
    * runs in app_main. Supervisor timer fires later (after WiFi is up) and
    * flips to the fallback SSID if the primary doesn't associate. */
   seed_wifi_credentials_from_config();
-#if DENAIR_HAVE_WIFI_CONFIG
+#if HA_AIRPLAY_HAVE_WIFI_CONFIG
   start_wifi_fallback_supervisor();
 #endif
 
@@ -234,15 +234,15 @@ esp_err_t iot_board_init(void) {
 
   ESP_RETURN_ON_ERROR(dac_init(s_i2c_bus), TAG, "dac init");
 
-  /* DenAir LED ring + encoder/button init are called from main/main.c
+  /* Home Assistant AirPlay LED ring + encoder/button init are called from main/main.c
    * right after iot_board_init returns. Keeping those references out of
    * libboards.a avoids a link-order issue with ESP-IDF's one-pass
-   * linker (denair_* libs get ordered before libboards.a in the
+   * linker (ha_airplay_* libs get ordered before libboards.a in the
    * component graph, so symbols referenced from inside libboards.a
    * wouldn't resolve). */
 
   s_board_initialized = true;
-  ESP_LOGI(TAG, "HA Voice PE initialized (DenAir)");
+  ESP_LOGI(TAG, "HA Voice PE initialized (Home Assistant AirPlay)");
   return ESP_OK;
 }
 

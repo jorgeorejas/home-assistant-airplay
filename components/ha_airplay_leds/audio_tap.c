@@ -16,7 +16,7 @@
  *     queues, no extra task. ~200 arithmetic ops per stereo frame.
  */
 
-#include "denair_leds.h"
+#include "ha_airplay_leds.h"
 
 #include "esp_timer.h"
 
@@ -56,7 +56,7 @@ static inline int32_t sat_i32_from_u64_sqrt(uint64_t x) {
   return out;
 }
 
-void denair_audio_tap(const int16_t *samples, size_t stereo_frames) {
+void ha_airplay_audio_tap(const int16_t *samples, size_t stereo_frames) {
   if (!samples || stereo_frames == 0) return;
 
   int32_t lp = s_lp_state;
@@ -108,6 +108,6 @@ void denair_audio_tap(const int16_t *samples, size_t stereo_frames) {
 }
 
 /* Accessors used by leds.c — exposed via internal header. */
-int64_t denair_audio_last_beat_us(void) { return atomic_load(&s_last_beat_us); }
-uint32_t denair_audio_bass_q24(void)    { return atomic_load(&s_bass_energy_q24); }
-uint32_t denair_audio_rms_q24(void)     { return atomic_load(&s_rms_q24); }
+int64_t ha_airplay_audio_last_beat_us(void) { return atomic_load(&s_last_beat_us); }
+uint32_t ha_airplay_audio_bass_q24(void)    { return atomic_load(&s_bass_energy_q24); }
+uint32_t ha_airplay_audio_rms_q24(void)     { return atomic_load(&s_rms_q24); }

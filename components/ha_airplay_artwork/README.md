@@ -1,4 +1,4 @@
-# `denair_artwork`
+# `ha_airplay_artwork`
 
 Decodes AirPlay album artwork on-device and publishes the dominant hue to the LED ring as its PLAYING-mode base colour.
 
@@ -9,7 +9,7 @@ Decodes AirPlay album artwork on-device and publishes the dominant hue to the LE
                 │
                 ▼
   main/rtsp/rtsp_handlers.c:~1440
-  denair_artwork_update(bytes, len, content_type)
+  ha_airplay_artwork_update(bytes, len, content_type)
                 │     copies to PSRAM
                 ▼
   xQueueSend → artwork_task (core 0, prio 3)
@@ -22,7 +22,7 @@ Decodes AirPlay album artwork on-device and publishes the dominant hue to the LE
   mean RGB → HSV → if (S>0.18 && V>0.12) vivid=1
                 │
                 ▼
-  denair_leds_set_base_hue(hue_deg, vivid)
+  ha_airplay_leds_set_base_hue(hue_deg, vivid)
 ```
 
 ## Why tjpgd from ROM
@@ -64,16 +64,16 @@ Why mean works for album art: covers are often dominated by one colour region (t
 vivid = (saturation > 0.18) && (value > 0.12)
 ```
 
-If the mean lands near grey (both channels roughly equal) or near black (low value), `denair_leds_set_base_hue` is called with `enabled = false` and the ring falls back to time-rotation. This stops us from painting the ring a muddy desaturated almost-white that nobody asked for.
+If the mean lands near grey (both channels roughly equal) or near black (low value), `ha_airplay_leds_set_base_hue` is called with `enabled = false` and the ring falls back to time-rotation. This stops us from painting the ring a muddy desaturated almost-white that nobody asked for.
 
 A histogram-based dominant-hue extractor would be more accurate at the cost of a larger output buffer and more math — available in `tests/colour/` upstream on request, not shipped in Phase 1.
 
-## Public API (`include/denair_artwork.h`)
+## Public API (`include/ha_airplay_artwork.h`)
 
 ```c
-esp_err_t denair_artwork_init(void);
+esp_err_t ha_airplay_artwork_init(void);
 
-void denair_artwork_update(const uint8_t *bytes, size_t len,
+void ha_airplay_artwork_update(const uint8_t *bytes, size_t len,
                            const char *content_type);
 ```
 
@@ -83,8 +83,8 @@ void denair_artwork_update(const uint8_t *bytes, size_t len,
 ## Example log line
 
 ```
-I (58595) denair_artwork: decoding 512×512 JPEG (scale 1/8, 180224 B)
-I (58611) denair_artwork: artwork mean RGB=(0.21,0.07,0.04) → HSV=(18°,0.81,0.21) vivid=1
+I (58595) ha_airplay_artwork: decoding 512×512 JPEG (scale 1/8, 180224 B)
+I (58611) ha_airplay_artwork: artwork mean RGB=(0.21,0.07,0.04) → HSV=(18°,0.81,0.21) vivid=1
 ```
 
 — artwork for RATA's *Dejarse los nudillos*. Dominant warm red (hue 18°), heavily saturated, dim overall (value 0.21 because the cover is mostly a dark band photo). Vivid gate passes; ring base settles to that red.

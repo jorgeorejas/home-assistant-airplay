@@ -3,7 +3,7 @@
 #include "esp_err.h"
 
 /**
- * DenAir user interface — rotary encoder + center button.
+ * Home Assistant AirPlay user interface — rotary encoder + center button.
  *
  * Pins (HA Voice PE, baked in):
  *   - Encoder A  = GPIO16
@@ -15,4 +15,4 @@
  * LED ring. Short-pressing the button calls playback_control_play_pause
  * which, on AirPlay 2, acts as a local mute toggle.
  */
-esp_err_t denair_ui_init(void);
+esp_err_t ha_airplay_ui_init(void);

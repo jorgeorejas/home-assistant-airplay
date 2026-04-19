@@ -1,4 +1,4 @@
-# DenAir sdkconfig overrides for the HA Voice PE board.
+# Home Assistant AirPlay sdkconfig overrides for the HA Voice PE board.
 # Layered on top of sdkconfig.defaults + sdkconfig.defaults.esp32s3.
 # Build invocation:
 #   idf.py set-target esp32s3
@@ -48,7 +48,7 @@ CONFIG_SPIRAM_SPEED_80M=y
 CONFIG_SPIRAM_FETCH_INSTRUCTIONS=y
 CONFIG_SPIRAM_RODATA=y
 
-# --- Features we do NOT want for DenAir ---
+# --- Features we do NOT want for Home Assistant AirPlay ---
 # The 12-LED ring is driven by our own engine (Phase 2), not the upstream
 # single-LED status indicator. Upstream has no master LED_ENABLED knob; the
 # GPIO knobs above at -1 already keep the pins unallocated.

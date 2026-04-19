@@ -1,6 +1,6 @@
 /**
  * @file dac_tlv320aic3204.c
- * @brief TI TLV320AIC3204 DAC driver for DenAir / HA Voice PE.
+ * @brief TI TLV320AIC3204 DAC driver for Home Assistant AirPlay / HA Voice PE.
  *
  * Init sequence is a straight port of ESPHome's aic3204 component
  * (esphome/components/aic3204/aic3204.cpp on github.com/esphome/esphome).
@@ -272,7 +272,7 @@ static void aic3204_enable_speaker(bool enable) {
 }
 
 static void aic3204_enable_line_out(bool enable) {
-  /* The 3.5 mm jack is the primary DenAir output and the HP path stays
+  /* The 3.5 mm jack is the primary Home Assistant AirPlay output and the HP path stays
    * always-routed. Per-session enable/disable happens via mute, not routing. */
   (void)enable;
 }

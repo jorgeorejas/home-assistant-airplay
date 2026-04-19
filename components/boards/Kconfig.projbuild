@@ -17,12 +17,12 @@ menu "Board Configuration"
             depends on IDF_TARGET_ESP32S3
 
         config BOARD_HA_VOICE_PE
-            bool "HA Voice PE (DenAir, ESP32-S3 + TLV320AIC3204)"
+            bool "HA Voice PE (Home Assistant AirPlay, ESP32-S3 + TLV320AIC3204)"
             depends on IDF_TARGET_ESP32S3
             select DAC_TLV320AIC3204
             help
                 Home Assistant Voice Preview Edition (NC-VK-9727) with the
-                DenAir AirPlay-receiver firmware. ESP32-S3R8 (octal PSRAM)
+                Home Assistant AirPlay firmware. ESP32-S3R8 (octal PSRAM)
                 driving a TLV320AIC3204 DAC via I2S and I2C, 3.5 mm jack
                 with detect + internal TPA6211A speaker amp, 12-LED WS2812B
                 ring, rotary encoder.

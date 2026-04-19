@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 #
-# denair-build.sh — one-liner for DenAir IDF builds on HA Voice PE.
+# ha-airplay-build.sh — one-liner for Home Assistant AirPlay IDF builds on HA Voice PE.
 #
 # Usage:
-#   tools/denair-build.sh [reconfigure|build|flash|monitor|clean|menuconfig]
+#   tools/ha-airplay-build.sh [reconfigure|build|flash|monitor|clean|menuconfig]
 #
 # First run should be `reconfigure` after any sdkconfig.defaults* change;
 # otherwise `build` is fine. The build is pinned to the ha_voice_pe target
-# by default. Override with DENAIR_TARGET=esp32s3 to build the upstream
+# by default. Override with HA_AIRPLAY_TARGET=esp32s3 to build the upstream
 # airplay-esp32 esp32s3-generic baseline (useful as a smoke test).
 
 set -euo pipefail
@@ -27,7 +27,7 @@ fi
 # their distribution name). Force homebrew's python3.13 via a shim in
 # PATH when running idf.py; export.sh's detect_python.sh picks up the
 # first `python3` it finds.
-PY_SHIM_DIR="${HOME}/esp/denair-python-shim"
+PY_SHIM_DIR="${HOME}/esp/ha-airplay-python-shim"
 if [ -x "${PY_SHIM_DIR}/python3" ]; then
     export PATH="${PY_SHIM_DIR}:${PATH}"
 fi
@@ -41,7 +41,7 @@ fi
 # shellcheck disable=SC1091
 source "${IDF_PATH}/export.sh" >/dev/null
 
-TARGET="${DENAIR_TARGET:-ha_voice_pe}"
+TARGET="${HA_AIRPLAY_TARGET:-ha_voice_pe}"
 case "$TARGET" in
     ha_voice_pe)
         SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.esp32s3;sdkconfig.defaults.ha_voice_pe"
@@ -50,7 +50,7 @@ case "$TARGET" in
         SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.esp32s3"
         ;;
     *)
-        echo "error: unknown DENAIR_TARGET=${TARGET}. Valid: ha_voice_pe | esp32s3." >&2
+        echo "error: unknown HA_AIRPLAY_TARGET=${TARGET}. Valid: ha_voice_pe | esp32s3." >&2
         exit 1
         ;;
 esac
@@ -65,7 +65,7 @@ export SDKCONFIG_DEFAULTS
 
 # Only set-target if the project has never been configured, to avoid
 # wiping a valid sdkconfig on every invocation. If the user switched
-# DENAIR_TARGET they should `tools/denair-build.sh clean` first.
+# HA_AIRPLAY_TARGET they should `tools/ha-airplay-build.sh clean` first.
 if [ ! -f sdkconfig ]; then
     idf.py set-target esp32s3 >/dev/null
 fi
@@ -107,7 +107,7 @@ case "$cmd" in
         ;;
     *)
         echo "unknown subcommand: $cmd" >&2
-        echo "usage: tools/denair-build.sh [reconfigure|build|flash|monitor|clean|menuconfig]" >&2
+        echo "usage: tools/ha-airplay-build.sh [reconfigure|build|flash|monitor|clean|menuconfig]" >&2
         exit 1
         ;;
 esac

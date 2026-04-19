@@ -2,7 +2,7 @@
  * @file button.c
  * @brief Center-button (GPIO0) press detector with multi-click + long-press.
  *
- * DenAir maps the center button to four distinct gestures. Because modern
+ * Home Assistant AirPlay maps the center button to four distinct gestures. Because modern
  * iOS no longer sends DACP headers to non-MFi AirPlay devices, play/pause
  * and next/prev commands cannot reach the iPhone — but short-press still
  * gives a useful *local* pause, and the DACP attempts are harmless no-ops
@@ -30,9 +30,9 @@
 #define LONG_PRESS_MS  1500
 #define BURST_MS       400   /* inter-click window for multi-click detection */
 
-static const char TAG[] = "denair_button";
+static const char TAG[] = "ha_airplay_button";
 
-static denair_button_callbacks_t s_cbs;
+static ha_airplay_button_callbacks_t s_cbs;
 static TaskHandle_t s_task = NULL;
 
 static void IRAM_ATTR button_isr(void *arg) {
@@ -113,7 +113,7 @@ static void button_task(void *arg) {
   }
 }
 
-esp_err_t denair_button_start(const denair_button_callbacks_t *cbs) {
+esp_err_t ha_airplay_button_start(const ha_airplay_button_callbacks_t *cbs) {
   if (cbs) s_cbs = *cbs;
 
   gpio_config_t cfg = {
@@ -126,7 +126,7 @@ esp_err_t denair_button_start(const denair_button_callbacks_t *cbs) {
   esp_err_t err = gpio_config(&cfg);
   if (err != ESP_OK) return err;
 
-  BaseType_t ok = xTaskCreate(button_task, "denair_btn", 3584, NULL, 8, &s_task);
+  BaseType_t ok = xTaskCreate(button_task, "ha_airplay_btn", 3584, NULL, 8, &s_task);
   if (ok != pdPASS) return ESP_ERR_NO_MEM;
 
   err = gpio_install_isr_service(0);

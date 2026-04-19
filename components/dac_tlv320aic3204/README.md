@@ -13,7 +13,7 @@ Upstream airplay-esp32 supplies drivers for the TI TAS57xx (SqueezeAMP) and TAS5
   - `deinit` — mutes, powers down, removes from the bus.
   - `set_volume(db)` — maps AirPlay's [-30, 0] dB range onto [`CONFIG_TLV320AIC3204_MAX_VOLUME_DB`, -63.5] dB, writes 0.5 dB-step codes to page 0 regs 65/66 (DACL_VOL_D / DACR_VOL_D).
   - `set_power_mode(mode)` — ON unmute; STANDBY mute (channels stay powered); OFF mute + channel power-down.
-  - `enable_speaker(bool)` / `enable_line_out(bool)` — both no-ops in DenAir. The internal-amp enable is gated at the TPA6211A (GPIO47, board layer), not at the codec. The HP/LO paths in the codec are permanently routed.
+  - `enable_speaker(bool)` / `enable_line_out(bool)` — both no-ops in Home Assistant AirPlay. The internal-amp enable is gated at the TPA6211A (GPIO47, board layer), not at the codec. The HP/LO paths in the codec are permanently routed.
 
 ## Register sequence
 
