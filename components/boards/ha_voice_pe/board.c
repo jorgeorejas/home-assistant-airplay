@@ -11,11 +11,21 @@
 
 #include "dac.h"
 #include "dac_tlv320aic3204.h"
+#include "settings.h"
 
 #include "driver/gpio.h"
 #include "driver/i2c_master.h"
 #include "esp_check.h"
 #include "esp_log.h"
+
+#include <string.h>
+
+#if __has_include("wifi_config.h")
+# include "wifi_config.h"
+# define DENAIR_HAVE_WIFI_CONFIG 1
+#else
+# define DENAIR_HAVE_WIFI_CONFIG 0
+#endif
 
 static const char TAG[] = "HA-Voice-PE";
 
@@ -51,8 +61,41 @@ static esp_err_t configure_amp_enable_gpio(void) {
   return ESP_OK;
 }
 
+/* Seed NVS WiFi credentials from wifi_config.h (DenAir hardcodes them at
+ * compile time per the PRD — captive portal is a fallback only). Runs on
+ * every boot so re-flashing with updated credentials is the source of truth.
+ * Falls through to upstream captive-portal behaviour if wifi_config.h is
+ * absent or WIFI_SSID_1 is empty. */
+static void seed_wifi_credentials_from_config(void) {
+#if DENAIR_HAVE_WIFI_CONFIG
+  const char *ssid = WIFI_SSID_1;
+  const char *pw = WIFI_PASSWORD_1;
+  if (ssid == NULL || ssid[0] == '\0') {
+    ESP_LOGW(TAG, "wifi_config.h present but WIFI_SSID_1 is empty; "
+                  "falling back to captive-portal setup");
+    return;
+  }
+  esp_err_t err = settings_set_wifi_credentials(ssid, pw);
+  if (err == ESP_OK) {
+    ESP_LOGI(TAG, "seeded WiFi credentials for SSID='%s' from wifi_config.h", ssid);
+  } else {
+    ESP_LOGW(TAG, "seeding WiFi credentials failed: %s", esp_err_to_name(err));
+  }
+  /* TODO(phase1): WIFI_SSID_2 fallback — requires extending upstream wifi.c
+   * which today tries one SSID only. */
+#else
+  ESP_LOGW(TAG, "wifi_config.h not found; using captive-portal setup. "
+                "Copy wifi_config.h.example to wifi_config.h and rebuild to "
+                "pin credentials at compile time.");
+#endif
+}
+
 esp_err_t iot_board_init(void) {
   if (s_board_initialized) return ESP_OK;
+
+  /* Seed WiFi credentials from compile-time config before wifi_init_apsta
+   * runs in app_main. */
+  seed_wifi_credentials_from_config();
 
   /* Register the AIC3204 DAC driver before calling dac_init so dac.c finds
    * an ops table when main calls it. */
