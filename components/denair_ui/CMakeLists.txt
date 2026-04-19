@@ -3,3 +3,6 @@ idf_component_register(
     INCLUDE_DIRS "include"
     PRIV_REQUIRES driver esp_timer main denair_leds
 )
+
+# fabsf comes from <math.h>; ESP-IDF's libm is linked by default.
+

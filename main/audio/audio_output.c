@@ -2,6 +2,7 @@
 
 #include "audio_receiver.h"
 #include "audio_resample.h"
+#include "denair_leds.h"
 #include "led.h"
 #include "driver/i2s_std.h"
 #include "driver/gpio.h"
@@ -91,6 +92,7 @@ static void playback_task(void *arg) {
       }
       apply_volume(play_buf, play_samples * 2);
       led_audio_feed(play_buf, play_samples);
+      denair_audio_tap(play_buf, play_samples);
       i2s_channel_write(tx_handle, play_buf, play_samples * 4, &written,
                         portMAX_DELAY);
       taskYIELD();

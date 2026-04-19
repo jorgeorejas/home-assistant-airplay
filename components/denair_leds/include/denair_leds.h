@@ -2,25 +2,54 @@
 
 #include "esp_err.h"
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 
 /**
  * DenAir LED ring engine — 12× WS2812B on GPIO21 (HA Voice PE).
  *
- * Phase 1 scope: volume-bar overlay on encoder turn, amber-breathing idle
- * pattern the rest of the time. Phase 2 will add audio-reactive modes
- * (VU / Beat Pulse / Spectrum) driven from the AirPlay PCM buffer via
- * FFT on core 1.
+ * State machine (highest priority first):
+ *   1. MUTE — two dim red pixels until cleared.
+ *   2. VOLUME — 2 s horizontal bar overlay after the user (or iOS) changes
+ *      the volume.
+ *   3. CONNECTION — 5 s white rotating sweep when a new AirPlay client
+ *      connects; 2 s red fade-out when one disconnects.
+ *   4. PLAYING — audio-reactive: dim slowly-rotating base hue with a
+ *      whole-ring flash on each detected beat, 400 ms exponential decay.
+ *   5. IDLE — 4 s amber breathing.
  */
+
+typedef enum {
+  DENAIR_PLAYBACK_IDLE = 0,
+  DENAIR_PLAYBACK_CONNECTED,   /* client connected but not streaming */
+  DENAIR_PLAYBACK_PLAYING,     /* audio actively flowing */
+  DENAIR_PLAYBACK_PAUSED,      /* client connected, stream paused */
+  DENAIR_PLAYBACK_DISCONNECTED /* transient — flashes then returns to IDLE */
+} denair_playback_state_t;
+
 esp_err_t denair_leds_init(void);
 
-/**
- * Show a volume bar for `hold_ms` then fade back to the idle pattern.
- * @param fraction  0.0 .. 1.0 — fills LEDs 1..12 proportionally
- */
+/** Set the base playback state that drives the PLAYING / IDLE visuals. */
+void denair_leds_set_playback_state(denair_playback_state_t state);
+
+/** Show a volume bar for `hold_ms` then fade back to the state above.
+ *  @param fraction 0.0..1.0 */
 void denair_leds_show_volume(float fraction, int hold_ms);
 
-/**
- * Muted-state indicator: dim red pair until cleared. Set `muted=false`
- * to return to the idle pattern.
- */
+/** 5 s connection overlay (white rotating sweep). */
+void denair_leds_flash_connection(void);
+
+/** Muted indicator overrides everything else until cleared. */
 void denair_leds_set_muted(bool muted);
+
+/**
+ * Audio tap — called from the audio playback task right before each
+ * I2S write. Computes bass-band energy and drives a simple beat
+ * detector. All heavy lifting stays on the audio core; the render task
+ * only reads published atomics.
+ *
+ * @param samples          16-bit signed stereo interleaved, L R L R ...
+ * @param stereo_frames    number of stereo frames (i.e. samples array
+ *                         length / 2)
+ */
+void denair_audio_tap(const int16_t *samples, size_t stereo_frames);

@@ -1,14 +1,19 @@
 /**
  * @file leds.c
- * @brief DenAir 12-LED WS2812B ring engine (Phase 1).
+ * @brief DenAir 12-LED WS2812B ring engine.
  *
- * Runs a FreeRTOS task on core 1 that renders at 50 Hz. Receives events
- * (volume-change, muted) via a small API; idle pattern is a slow amber
- * breath. Phase 2 will expand this into the four PRD-mandated modes
- * driven from the AirPlay audio buffer.
+ * Renders at 50 Hz on core 1. State machine:
+ *   MUTE (priority 1)  two dim red pixels.
+ *   VOLUME (prio 2)    horizontal bar overlay, 2 s hold.
+ *   CONN_IN (prio 3)   5 s white rotating sweep on new AirPlay client.
+ *   CONN_OUT (prio 3)  2 s dim red fade-out on disconnect.
+ *   PLAYING (prio 4)   rotating base hue + whole-ring flash on each beat
+ *                      detected by denair_audio_tap.
+ *   IDLE (prio 5)      slow amber breath.
  */
 
 #include "denair_leds.h"
+#include "leds_internal.h"
 
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -16,8 +21,8 @@
 #include "freertos/task.h"
 #include "led_strip.h"
 
-#include <stdatomic.h>
 #include <math.h>
+#include <stdatomic.h>
 #include <string.h>
 
 #define LED_GPIO         21
@@ -25,71 +30,61 @@
 #define LED_RENDER_HZ    50
 #define LED_RENDER_MS    (1000 / LED_RENDER_HZ)
 
+#define CONN_IN_MS       5000
+#define CONN_OUT_MS      2000
+#define BEAT_DECAY_MS    400     /* exp decay time constant */
+
 static const char TAG[] = "denair_leds";
 
 static led_strip_handle_t s_strip = NULL;
 static TaskHandle_t s_task = NULL;
 
-typedef enum {
-  MODE_IDLE = 0,
-  MODE_VOLUME_OVERLAY,
-  MODE_MUTED,
-} led_mode_t;
-
-static _Atomic int s_mode = MODE_IDLE;
-static _Atomic int s_volume_fill_x1000 = 500;   // 0..1000 (fraction * 1000)
+/* Atomic state shared between API setters and render task */
+static _Atomic int s_playback_state = DENAIR_PLAYBACK_IDLE;
+static _Atomic int s_volume_fill_x1000 = 500;
 static _Atomic int64_t s_volume_overlay_until_us = 0;
+static _Atomic int64_t s_conn_in_until_us = 0;
+static _Atomic int64_t s_conn_out_until_us = 0;
 static _Atomic bool s_muted = false;
 
-/* ---------- Rendering helpers ---------- */
+/* Track last observed beat timestamp to detect "new beat since last frame" */
+static int64_t s_last_rendered_beat_us = 0;
+static int64_t s_last_beat_flash_us = 0;
 
-static void render_idle(int64_t now_us) {
-  /* Slow amber breathing: 4 s period, gentle amber ~255/140/20 peak. */
-  float t = (float)(now_us / 1000) / 1000.0f; // seconds
-  float phase = fmodf(t, 4.0f) / 4.0f;        // 0..1
-  float brightness;
-  if (phase < 0.5f) {
-    brightness = phase * 2.0f;
-  } else {
-    brightness = (1.0f - phase) * 2.0f;
-  }
-  uint8_t r = (uint8_t)(40.0f * brightness);
-  uint8_t g = (uint8_t)(16.0f * brightness);
-  uint8_t b = 0;
-  for (int i = 0; i < LED_COUNT; i++) {
-    led_strip_set_pixel(s_strip, i, r, g, b);
-  }
+/* ---------- Pixel helpers ---------- */
+
+static void hsv_to_rgb(float h, float s, float v, uint8_t *r, uint8_t *g, uint8_t *b) {
+  float hh = fmodf(h, 360.0f);
+  if (hh < 0) hh += 360.0f;
+  float c = v * s;
+  float x = c * (1.0f - fabsf(fmodf(hh / 60.0f, 2.0f) - 1.0f));
+  float m = v - c;
+  float rf = 0, gf = 0, bf = 0;
+  if (hh < 60)       { rf = c; gf = x; bf = 0; }
+  else if (hh < 120) { rf = x; gf = c; bf = 0; }
+  else if (hh < 180) { rf = 0; gf = c; bf = x; }
+  else if (hh < 240) { rf = 0; gf = x; bf = c; }
+  else if (hh < 300) { rf = x; gf = 0; bf = c; }
+  else               { rf = c; gf = 0; bf = x; }
+  *r = (uint8_t)((rf + m) * 255.0f);
+  *g = (uint8_t)((gf + m) * 255.0f);
+  *b = (uint8_t)((bf + m) * 255.0f);
 }
 
-static void render_volume_bar(void) {
-  int fill_x1000 = atomic_load(&s_volume_fill_x1000);
-  /* How many full LEDs to light (1..12 scale). */
-  int lit = (fill_x1000 * LED_COUNT + 500) / 1000;
-  if (lit < 0) lit = 0;
-  if (lit > LED_COUNT) lit = LED_COUNT;
+/* ---------- Render modes ---------- */
 
+static void render_idle(int64_t now_us) {
+  float t_s = (float)(now_us / 1000) / 1000.0f;
+  float phase = fmodf(t_s, 4.0f) / 4.0f;
+  float bright = (phase < 0.5f) ? phase * 2.0f : (1.0f - phase) * 2.0f;
+  uint8_t r = (uint8_t)(40.0f * bright);
+  uint8_t g = (uint8_t)(16.0f * bright);
   for (int i = 0; i < LED_COUNT; i++) {
-    if (i < lit) {
-      uint8_t r, g, b;
-      /* Green → yellow → red gradient across the ring. */
-      if (i < 8) {
-        r = 0; g = 80; b = 0;
-      } else if (i < 10) {
-        r = 90; g = 60; b = 0;
-      } else {
-        r = 120; g = 0; b = 0;
-      }
-      led_strip_set_pixel(s_strip, i, r, g, b);
-    } else {
-      led_strip_set_pixel(s_strip, i, 0, 0, 0);
-    }
+    led_strip_set_pixel(s_strip, i, r, g, 0);
   }
 }
 
 static void render_muted(void) {
-  /* Two dim red LEDs opposite each other (positions 3 and 9 — quarter/
-   * three-quarter on a 12 LED ring). Rest off. Matches the reference
-   * yaml's muted indicator. */
   for (int i = 0; i < LED_COUNT; i++) {
     if (i == 3 || i == 9) {
       led_strip_set_pixel(s_strip, i, 60, 0, 0);
@@ -99,7 +94,104 @@ static void render_muted(void) {
   }
 }
 
-/* ---------- Task ---------- */
+static void render_volume_bar(void) {
+  int fill = atomic_load(&s_volume_fill_x1000);
+  int lit = (fill * LED_COUNT + 500) / 1000;
+  if (lit < 0) lit = 0;
+  if (lit > LED_COUNT) lit = LED_COUNT;
+  for (int i = 0; i < LED_COUNT; i++) {
+    if (i < lit) {
+      uint8_t r, g, b;
+      if (i < 8)      { r = 0;   g = 80; b = 0; }
+      else if (i < 10){ r = 90;  g = 60; b = 0; }
+      else            { r = 120; g = 0;  b = 0; }
+      led_strip_set_pixel(s_strip, i, r, g, b);
+    } else {
+      led_strip_set_pixel(s_strip, i, 0, 0, 0);
+    }
+  }
+}
+
+static void render_conn_in(int64_t now_us, int64_t until_us) {
+  /* White pixel chasing around the ring, 1 revolution / second. Everything
+   * else dim white. Fade everything out over the last 500 ms. */
+  float elapsed_s = (float)((now_us - (until_us - (int64_t)CONN_IN_MS * 1000)) / 1000) / 1000.0f;
+  float total_s = (float)CONN_IN_MS / 1000.0f;
+  float remaining_s = (float)(until_us - now_us) / 1e6f;
+  float fade = (remaining_s < 0.5f) ? remaining_s / 0.5f : 1.0f;
+  if (fade < 0) fade = 0;
+  (void)elapsed_s; (void)total_s;
+
+  int lead = ((int)(elapsed_s * LED_COUNT)) % LED_COUNT;
+  if (lead < 0) lead += LED_COUNT;
+
+  for (int i = 0; i < LED_COUNT; i++) {
+    int dist = (i - lead + LED_COUNT) % LED_COUNT;
+    float b;
+    if (dist == 0)       b = 1.0f;
+    else if (dist == 1)  b = 0.5f;
+    else if (dist == 2)  b = 0.2f;
+    else                 b = 0.05f;
+    b *= fade;
+    uint8_t v = (uint8_t)(b * 140.0f);
+    led_strip_set_pixel(s_strip, i, v, v, v);
+  }
+}
+
+static void render_conn_out(int64_t now_us, int64_t until_us) {
+  float remaining_s = (float)(until_us - now_us) / 1e6f;
+  if (remaining_s < 0) remaining_s = 0;
+  float fade = remaining_s / ((float)CONN_OUT_MS / 1000.0f);
+  uint8_t r = (uint8_t)(fade * 80.0f);
+  for (int i = 0; i < LED_COUNT; i++) {
+    led_strip_set_pixel(s_strip, i, r, 0, 0);
+  }
+}
+
+static void render_playing(int64_t now_us) {
+  /* Base hue rotates 1 revolution / 20 s. Dim background. */
+  float t_s = (float)(now_us / 1000) / 1000.0f;
+  float hue = fmodf(t_s * (360.0f / 20.0f), 360.0f);
+
+  /* Beat flash: when audio_tap fires a new beat, start an exponential
+   * decay. Decay factor decays toward 0 with time constant BEAT_DECAY_MS. */
+  int64_t last_beat_us = denair_audio_last_beat_us();
+  if (last_beat_us > s_last_rendered_beat_us) {
+    s_last_rendered_beat_us = last_beat_us;
+    s_last_beat_flash_us = last_beat_us;
+  }
+  float flash = 0.0f;
+  if (s_last_beat_flash_us > 0) {
+    float age_ms = (float)(now_us - s_last_beat_flash_us) / 1000.0f;
+    flash = expf(-age_ms / (float)BEAT_DECAY_MS);
+    if (flash < 0.02f) flash = 0.0f;
+  }
+
+  /* Slight RMS-driven breathing on the base brightness so quiet passages
+   * don't look static. */
+  uint32_t rms_q24 = denair_audio_rms_q24();
+  float rms_norm = (float)rms_q24 / (float)(1 << 20); /* 0..16, clamp */
+  if (rms_norm > 1.0f) rms_norm = 1.0f;
+  float base_bright = 0.15f + 0.20f * rms_norm;
+
+  uint8_t br, bg, bb;
+  hsv_to_rgb(hue, 1.0f, base_bright, &br, &bg, &bb);
+
+  /* Flash adds white on top, scaled by the decay envelope. */
+  uint8_t flash_v = (uint8_t)(flash * 180.0f);
+
+  for (int i = 0; i < LED_COUNT; i++) {
+    int r = br + flash_v;
+    int g = bg + flash_v;
+    int b = bb + flash_v;
+    if (r > 255) r = 255;
+    if (g > 255) g = 255;
+    if (b > 255) b = 255;
+    led_strip_set_pixel(s_strip, i, (uint8_t)r, (uint8_t)g, (uint8_t)b);
+  }
+}
+
+/* ---------- Render task ---------- */
 
 static void led_task(void *arg) {
   (void)arg;
@@ -107,26 +199,24 @@ static void led_task(void *arg) {
   for (;;) {
     int64_t now = esp_timer_get_time();
 
-    /* Pick rendering mode for this frame. Muted beats volume-overlay
-     * beats idle. */
-    led_mode_t mode;
     if (atomic_load(&s_muted)) {
-      mode = MODE_MUTED;
+      render_muted();
     } else if (now < atomic_load(&s_volume_overlay_until_us)) {
-      mode = MODE_VOLUME_OVERLAY;
+      render_volume_bar();
+    } else if (now < atomic_load(&s_conn_in_until_us)) {
+      render_conn_in(now, atomic_load(&s_conn_in_until_us));
+    } else if (now < atomic_load(&s_conn_out_until_us)) {
+      render_conn_out(now, atomic_load(&s_conn_out_until_us));
     } else {
-      mode = MODE_IDLE;
+      int state = atomic_load(&s_playback_state);
+      if (state == DENAIR_PLAYBACK_PLAYING) {
+        render_playing(now);
+      } else {
+        render_idle(now);
+      }
     }
-    atomic_store(&s_mode, mode);
 
-    switch (mode) {
-    case MODE_MUTED:           render_muted();          break;
-    case MODE_VOLUME_OVERLAY:  render_volume_bar();     break;
-    case MODE_IDLE:
-    default:                    render_idle(now);        break;
-    }
     led_strip_refresh(s_strip);
-
     vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(LED_RENDER_MS));
   }
 }
@@ -157,26 +247,39 @@ esp_err_t denair_leds_init(void) {
   led_strip_clear(s_strip);
   led_strip_refresh(s_strip);
 
-  /* Render task on core 1 — leaves core 0 for WiFi/AirPlay. */
-  BaseType_t ok = xTaskCreatePinnedToCore(led_task, "denair_leds", 3072, NULL,
+  BaseType_t ok = xTaskCreatePinnedToCore(led_task, "denair_leds", 4096, NULL,
                                           3, &s_task, 1);
-  if (ok != pdPASS) {
-    ESP_LOGE(TAG, "xTaskCreatePinnedToCore(denair_leds): out of memory");
-    return ESP_ERR_NO_MEM;
-  }
+  if (ok != pdPASS) return ESP_ERR_NO_MEM;
   ESP_LOGI(TAG, "LED ring up (GPIO %d, %d pixels, %d Hz)", LED_GPIO,
            LED_COUNT, LED_RENDER_HZ);
   return ESP_OK;
+}
+
+void denair_leds_set_playback_state(denair_playback_state_t state) {
+  int prev = atomic_exchange(&s_playback_state,
+                             (state == DENAIR_PLAYBACK_DISCONNECTED
+                                  ? DENAIR_PLAYBACK_IDLE
+                                  : state));
+  (void)prev;
+  if (state == DENAIR_PLAYBACK_DISCONNECTED) {
+    atomic_store(&s_conn_out_until_us,
+                 esp_timer_get_time() + (int64_t)CONN_OUT_MS * 1000);
+  }
 }
 
 void denair_leds_show_volume(float fraction, int hold_ms) {
   if (!s_strip) return;
   if (fraction < 0.0f) fraction = 0.0f;
   if (fraction > 1.0f) fraction = 1.0f;
-  int fill = (int)(fraction * 1000.0f + 0.5f);
-  atomic_store(&s_volume_fill_x1000, fill);
+  atomic_store(&s_volume_fill_x1000, (int)(fraction * 1000.0f + 0.5f));
   atomic_store(&s_volume_overlay_until_us,
                esp_timer_get_time() + (int64_t)hold_ms * 1000);
+}
+
+void denair_leds_flash_connection(void) {
+  if (!s_strip) return;
+  atomic_store(&s_conn_in_until_us,
+               esp_timer_get_time() + (int64_t)CONN_IN_MS * 1000);
 }
 
 void denair_leds_set_muted(bool muted) {
