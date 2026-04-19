@@ -45,7 +45,7 @@
 #define BOARD_LED_POWER_GPIO   45  /* switched VCC for the WS2812B ring (HIGH = on) */
 
 /* ---- Hardware mute slide switch (repurposed in DenAir) ---- */
-#define BOARD_MUTE_SWITCH_GPIO 3   /* HIGH = LEDs on, LOW = LEDs off */
+#define BOARD_MUTE_SWITCH_GPIO 3   /* LOW = LEDs on, HIGH = LEDs off */
 /* DenAir handles amp enable in our DAC driver's enable_speaker op, not via
  * upstream's generic MUTE_GPIO path. */
 #define BOARD_MUTE_GPIO        -1

@@ -35,8 +35,9 @@ static void IRAM_ATTR switch_isr(void *arg) {
 }
 
 static void apply_state(int level) {
-  /* HIGH → LEDs on, LOW → LEDs off. */
-  denair_leds_set_power(level != 0);
+  /* LOW → LEDs on, HIGH → LEDs off. (Slide physically toward the mute
+   * position → ring lights up. Polarity confirmed on bench 2026-04-19.) */
+  denair_leds_set_power(level == 0);
 }
 
 static void switch_task(void *arg) {
@@ -45,7 +46,7 @@ static void switch_task(void *arg) {
   int last = gpio_get_level(SWITCH_GPIO);
   apply_state(last);
   ESP_LOGI(TAG, "mute-slide switch seeded: level=%d → LEDs %s", last,
-           last ? "ON" : "OFF");
+           (last == 0) ? "ON" : "OFF");
 
   for (;;) {
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
@@ -54,7 +55,7 @@ static void switch_task(void *arg) {
     if (lvl != last) {
       last = lvl;
       ESP_LOGI(TAG, "mute-slide switch → level=%d → LEDs %s", lvl,
-               lvl ? "ON" : "OFF");
+               (lvl == 0) ? "ON" : "OFF");
       apply_state(lvl);
     }
   }
