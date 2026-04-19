@@ -5,7 +5,9 @@
 #   idf.py -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.esp32s3;sdkconfig.defaults.ha_voice_pe" reconfigure
 #   idf.py build
 
-# Board selection
+# Board selection — explicitly unset the Kconfig-default so the choice
+# flips to HA_VOICE_PE instead of falling through to ESP32S3_GENERIC.
+# CONFIG_BOARD_ESP32S3_GENERIC is not set
 CONFIG_BOARD_HA_VOICE_PE=y
 CONFIG_DAC_TLV320AIC3204=y
 
@@ -47,10 +49,12 @@ CONFIG_DISPLAY_ENABLED=n
 # (No explicit CONFIG_BT here — default off on S3, confirmed by upstream
 #  sdkconfig.defaults.esp32s3 not setting it.)
 
-# --- Native USB CDC for the ESP32-S3 (HA Voice PE has no UART bridge).
-# Explicitly unset UART_DEFAULT so the Kconfig choice reliably switches to
-# USB_CDC even on incremental reconfigure. ---
-# CONFIG_ESP_CONSOLE_UART_DEFAULT is not set
-CONFIG_ESP_CONSOLE_USB_CDC=y
-# CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG is not set
-CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
+# --- Console path ---
+# USB_CDC as the primary console produced no output on this ESP32-S3 + native
+# USB setup, even though the Kconfig was definitely taking. USB_SERIAL_JTAG
+# as the SECONDARY console (with UART primary) is the config that actually
+# produced logs on the earlier generic-target smoke test, so we use it here.
+# (Both are seen as /dev/cu.usbmodem* on macOS; JTAG just works more
+# reliably as a log output on the ESP32-S3 ROM.)
+CONFIG_ESP_CONSOLE_UART_DEFAULT=y
+CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG=y

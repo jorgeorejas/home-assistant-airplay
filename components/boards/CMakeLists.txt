@@ -15,3 +15,8 @@ idf_component_register(
     REQUIRES esp_driver_i2c board_utils
     PRIV_REQUIRES ${PRIV_REQUIRES}
 )
+
+# DenAir: the ha_voice_pe board includes the project-root wifi_config.h
+# (gitignored, user-provided). Add the project root to this component's
+# private include search path so __has_include("wifi_config.h") finds it.
+target_include_directories(${COMPONENT_LIB} PRIVATE ${CMAKE_SOURCE_DIR})
