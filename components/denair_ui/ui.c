@@ -1,20 +1,32 @@
 /**
  * @file ui.c
- * @brief DenAir UI coordinator — wires encoder turns and button presses
- *        into upstream playback_control + denair_leds feedback, and
- *        maps AirPlay RTSP events onto LED state transitions.
+ * @brief DenAir UI coordinator.
+ *
+ * Button mapping (modern-iOS reality: DACP headers aren't sent to
+ * non-MFi devices, so play/pause and track controls can't reach the
+ * iPhone — we still wire them up for forward-compat and for the local
+ * pause/mute fallbacks that upstream provides).
+ *
+ *   Short press    → playback_control_play_pause  (local pause/mute in AP2)
+ *   Double click   → playback_control_next        (DACP → iOS if ever enabled)
+ *   Triple click   → playback_control_prev        (DACP → iOS if ever enabled)
+ *   Long press     → local DAC mute toggle + LED muted indicator
+ *
+ * Encoder:
+ *   Turn           → playback_control_volume_{up,down}
+ *                    (local DAC volume + attempts DACP push to iPhone slider)
  */
 
 #include "denair_ui.h"
 #include "ui_internal.h"
 
+#include "dac.h"
 #include "denair_leds.h"
 #include "playback_control.h"
 #include "rtsp_events.h"
 #include "settings.h"
 
 #include "esp_log.h"
-#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -23,11 +35,13 @@
 
 static const char TAG[] = "denair_ui";
 
-/* Upstream uses -30..0 dB as the AirPlay volume range. */
 #define VOL_MIN_DB (-30.0f)
 #define VOL_MAX_DB (0.0f)
 
-static _Atomic bool s_muted = false;
+/* Long-press mute is separate from the upstream "play_pause = local mute"
+ * path: it goes through the DAC's STANDBY power mode so it survives play/
+ * pause toggling. */
+static _Atomic bool s_hard_muted = false;
 
 static float current_volume_fraction(void) {
   float db;
@@ -42,9 +56,7 @@ static void show_current_volume_on_leds(int hold_ms) {
   denair_leds_show_volume(current_volume_fraction(), hold_ms);
 }
 
-/* ------------------------------------------------------------------ */
-/*  Encoder + button callbacks                                         */
-/* ------------------------------------------------------------------ */
+/* ---------- Encoder ---------- */
 
 static void on_encoder_turn(int direction) {
   if (direction > 0) {
@@ -52,56 +64,45 @@ static void on_encoder_turn(int direction) {
   } else if (direction < 0) {
     playback_control_volume_down();
   }
-  if (atomic_exchange(&s_muted, false)) {
+  /* Turning the encoder always clears hard-mute. */
+  if (atomic_exchange(&s_hard_muted, false)) {
+    dac_set_power_mode(DAC_POWER_ON);
     denair_leds_set_muted(false);
   }
   show_current_volume_on_leds(2000);
 }
 
+/* ---------- Button ---------- */
+
 static void on_button_short(void) {
-  /* AirPlay 2: play_pause toggles local mute. */
+  ESP_LOGI(TAG, "button: short → play/pause (local)");
   playback_control_play_pause();
-  bool now_muted = !atomic_load(&s_muted);
-  atomic_store(&s_muted, now_muted);
-  denair_leds_set_muted(now_muted);
-  ESP_LOGI(TAG, "button short press → %s", now_muted ? "muted" : "unmuted");
+}
+
+static void on_button_double(void) {
+  ESP_LOGI(TAG, "button: double → next track (DACP best-effort)");
+  playback_control_next();
+}
+
+static void on_button_triple(void) {
+  ESP_LOGI(TAG, "button: triple → previous track (DACP best-effort)");
+  playback_control_prev();
 }
 
 static void on_button_long(void) {
-  /* Phase 2: LED mode cycle (beat-pulse / spectrum / idle-only). */
-  ESP_LOGI(TAG, "button long press (Phase 2 placeholder)");
+  bool now_muted = !atomic_load(&s_hard_muted);
+  atomic_store(&s_hard_muted, now_muted);
+  ESP_LOGI(TAG, "button: long → %s (local)", now_muted ? "muted" : "unmuted");
+  dac_set_power_mode(now_muted ? DAC_POWER_STANDBY : DAC_POWER_ON);
+  denair_leds_set_muted(now_muted);
 }
 
-/* ------------------------------------------------------------------ */
-/*  iOS volume poll — detects slider drags on the client side          */
-/* ------------------------------------------------------------------ */
-
-/* Upstream's airplay_set_volume writes the new volume to NVS and calls
- * dac_set_volume directly. It does not emit an event. The cheapest way
- * to mirror that change on the LEDs is a 5 Hz polling task that notices
- * when the persisted volume drifts. */
-static void volume_poll_task(void *arg) {
-  (void)arg;
-  float last = current_volume_fraction();
-  for (;;) {
-    vTaskDelay(pdMS_TO_TICKS(200));
-    float now = current_volume_fraction();
-    if (fabsf(now - last) > 0.005f) {  /* ignore noise */
-      denair_leds_show_volume(now, 2000);
-      last = now;
-    }
-  }
-}
-
-/* ------------------------------------------------------------------ */
-/*  AirPlay RTSP event hookup                                          */
-/* ------------------------------------------------------------------ */
+/* ---------- RTSP → LED state ---------- */
 
 static void on_rtsp_event(rtsp_event_t event, const rtsp_event_data_t *data,
                           void *user_data) {
   (void)data;
   (void)user_data;
-
   switch (event) {
   case RTSP_EVENT_CLIENT_CONNECTED:
     ESP_LOGI(TAG, "AirPlay client connected → LED connection flash");
@@ -121,14 +122,26 @@ static void on_rtsp_event(rtsp_event_t event, const rtsp_event_data_t *data,
     denair_leds_set_playback_state(DENAIR_PLAYBACK_DISCONNECTED);
     break;
   case RTSP_EVENT_METADATA:
-    /* Track change. Phase 2 may use this for a short highlight. */
     break;
   }
 }
 
-/* ------------------------------------------------------------------ */
-/*  Init                                                               */
-/* ------------------------------------------------------------------ */
+/* ---------- iOS volume poll ---------- */
+
+static void volume_poll_task(void *arg) {
+  (void)arg;
+  float last = current_volume_fraction();
+  for (;;) {
+    vTaskDelay(pdMS_TO_TICKS(200));
+    float now = current_volume_fraction();
+    if (fabsf(now - last) > 0.005f) {
+      denair_leds_show_volume(now, 2000);
+      last = now;
+    }
+  }
+}
+
+/* ---------- Init ---------- */
 
 esp_err_t denair_ui_init(void) {
   esp_err_t err = denair_encoder_start(on_encoder_turn);
@@ -136,31 +149,32 @@ esp_err_t denair_ui_init(void) {
     ESP_LOGE(TAG, "encoder start: %s", esp_err_to_name(err));
     return err;
   }
-  err = denair_button_start(on_button_short, on_button_long);
+
+  denair_button_callbacks_t btn_cbs = {
+      .short_cb = on_button_short,
+      .double_cb = on_button_double,
+      .triple_cb = on_button_triple,
+      .long_cb = on_button_long,
+  };
+  err = denair_button_start(&btn_cbs);
   if (err != ESP_OK) {
     ESP_LOGE(TAG, "button start: %s", esp_err_to_name(err));
     return err;
   }
 
-  /* Mute-slide switch on GPIO3 is repurposed as the LED on/off control.
-   * Non-fatal — if it fails the ring just stays in whatever state
-   * denair_leds_init left it (powered off). */
   esp_err_t sw_err = denair_led_switch_start();
   if (sw_err != ESP_OK) {
     ESP_LOGW(TAG, "LED on/off switch init failed: %s", esp_err_to_name(sw_err));
   }
 
-  /* Register for AirPlay events so LED state follows playback. */
   rtsp_events_register(on_rtsp_event, NULL);
 
-  /* Poll for iOS-side volume changes. */
   BaseType_t ok = xTaskCreate(volume_poll_task, "denair_volpoll", 3072, NULL,
                               4, NULL);
   if (ok != pdPASS) {
-    ESP_LOGW(TAG, "volume poll task: out of memory (iOS slider won't flash LEDs)");
+    ESP_LOGW(TAG, "volume poll task: out of memory");
   }
 
-  /* One-shot "LEDs are alive" volume flash at boot. */
   show_current_volume_on_leds(1500);
   ESP_LOGI(TAG, "UI ready");
   return ESP_OK;

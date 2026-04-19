@@ -1,11 +1,20 @@
 /**
  * @file button.c
- * @brief Center-button (GPIO0, active-low) with debounce and hold detection.
+ * @brief Center-button (GPIO0) press detector with multi-click + long-press.
  *
- * GPIO0 is a strapping pin; the HA Voice PE externally pulls it up, so
- * the firmware only needs a pull-up config and to watch for low transitions.
- * Short press (<1.5 s) triggers the short-press callback. Hold ≥1.5 s
- * triggers the long-press callback (used by Phase 2 to cycle LED modes).
+ * DenAir maps the center button to four distinct gestures. Because modern
+ * iOS no longer sends DACP headers to non-MFi AirPlay devices, play/pause
+ * and next/prev commands cannot reach the iPhone — but short-press still
+ * gives a useful *local* pause, and the DACP attempts are harmless no-ops
+ * if iOS ever re-enables them.
+ *
+ *   Short press (<LONG_PRESS_MS)   1 release    → short callback
+ *   Short press × 2 inside BURST   2 releases   → double callback
+ *   Short press × 3 inside BURST   3 releases   → triple callback
+ *   Held ≥LONG_PRESS_MS            any time     → long callback (one-shot)
+ *
+ * Implementation: ISR wakes a task on each GPIO edge. The task runs a
+ * small state machine with a BURST_MS inter-click window. No timers.
  */
 
 #include "ui_internal.h"
@@ -16,14 +25,14 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#define BUTTON_GPIO         0
-#define DEBOUNCE_MS         20
-#define LONG_PRESS_MS       1500
+#define BUTTON_GPIO    0
+#define DEBOUNCE_MS    20
+#define LONG_PRESS_MS  1500
+#define BURST_MS       400   /* inter-click window for multi-click detection */
 
 static const char TAG[] = "denair_button";
 
-static void (*s_on_short)(void) = NULL;
-static void (*s_on_long)(void) = NULL;
+static denair_button_callbacks_t s_cbs;
 static TaskHandle_t s_task = NULL;
 
 static void IRAM_ATTR button_isr(void *arg) {
@@ -33,42 +42,79 @@ static void IRAM_ATTR button_isr(void *arg) {
   portYIELD_FROM_ISR(woken);
 }
 
+/* Wait for the next notify or a timeout. Returns true if notified, false
+ * if timed out. */
+static inline bool wait_notify(uint32_t timeout_ms) {
+  return ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(timeout_ms)) != 0;
+}
+
+static inline bool is_pressed(void) { return gpio_get_level(BUTTON_GPIO) == 0; }
+
+static void fire_count(int n) {
+  if (!s_cbs.short_cb && !s_cbs.double_cb && !s_cbs.triple_cb) return;
+  if (n == 1 && s_cbs.short_cb)  s_cbs.short_cb();
+  if (n == 2 && s_cbs.double_cb) s_cbs.double_cb();
+  if (n == 3 && s_cbs.triple_cb) s_cbs.triple_cb();
+  if (n > 3)                     ESP_LOGD(TAG, "ignored %d-click burst", n);
+}
+
 static void button_task(void *arg) {
   (void)arg;
   for (;;) {
-    /* Wait for an edge (press or release) */
-    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    /* Wait forever for the first edge. */
+    wait_notify(portMAX_DELAY);
 
-    /* Debounce */
+    /* Debounce. */
     vTaskDelay(pdMS_TO_TICKS(DEBOUNCE_MS));
-    if (gpio_get_level(BUTTON_GPIO) != 0) {
-      /* bounce or spurious — ignore */
-      continue;
-    }
+    if (!is_pressed()) continue;  /* spurious / bounce */
 
-    int64_t pressed_at = esp_timer_get_time();
+    /* Count presses within a burst window. */
+    int count = 0;
     bool long_fired = false;
 
-    /* Poll every 50 ms while pressed; fire long-press at the threshold */
-    while (gpio_get_level(BUTTON_GPIO) == 0) {
-      int64_t elapsed = esp_timer_get_time() - pressed_at;
-      if (!long_fired && elapsed >= (int64_t)LONG_PRESS_MS * 1000) {
-        long_fired = true;
-        if (s_on_long) s_on_long();
+    while (true) {
+      /* --- Button is currently pressed. Wait for release or long-press. --- */
+      int64_t pressed_at = esp_timer_get_time();
+      while (is_pressed()) {
+        int64_t held_us = esp_timer_get_time() - pressed_at;
+        if (!long_fired && held_us >= (int64_t)LONG_PRESS_MS * 1000) {
+          long_fired = true;
+          if (s_cbs.long_cb) s_cbs.long_cb();
+        }
+        vTaskDelay(pdMS_TO_TICKS(20));
       }
-      vTaskDelay(pdMS_TO_TICKS(50));
+
+      /* Debounce release edge. */
+      vTaskDelay(pdMS_TO_TICKS(DEBOUNCE_MS));
+
+      /* If the long-press already fired we don't count this release as a
+       * click; consume any accumulated count and restart. */
+      if (long_fired) {
+        count = 0;
+        break;
+      }
+
+      count++;
+
+      /* Wait BURST_MS for another press; if one arrives, loop. */
+      if (wait_notify(BURST_MS)) {
+        vTaskDelay(pdMS_TO_TICKS(DEBOUNCE_MS));
+        if (!is_pressed()) continue;  /* bounce on quiet edge */
+        /* Fresh press: loop to measure hold + release. */
+        continue;
+      }
+      /* Timed out — burst is done. */
+      break;
     }
 
-    if (!long_fired) {
-      if (s_on_short) s_on_short();
+    if (count > 0) {
+      fire_count(count);
     }
   }
 }
 
-esp_err_t denair_button_start(void (*on_short)(void),
-                              void (*on_long)(void)) {
-  s_on_short = on_short;
-  s_on_long = on_long;
+esp_err_t denair_button_start(const denair_button_callbacks_t *cbs) {
+  if (cbs) s_cbs = *cbs;
 
   gpio_config_t cfg = {
       .pin_bit_mask = (1ULL << BUTTON_GPIO),
@@ -80,13 +126,14 @@ esp_err_t denair_button_start(void (*on_short)(void),
   esp_err_t err = gpio_config(&cfg);
   if (err != ESP_OK) return err;
 
-  BaseType_t ok = xTaskCreate(button_task, "denair_btn", 3072, NULL, 8, &s_task);
+  BaseType_t ok = xTaskCreate(button_task, "denair_btn", 3584, NULL, 8, &s_task);
   if (ok != pdPASS) return ESP_ERR_NO_MEM;
 
   err = gpio_install_isr_service(0);
   if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) return err;
   gpio_isr_handler_add(BUTTON_GPIO, button_isr, NULL);
 
-  ESP_LOGI(TAG, "center button ready (GPIO %d, active low)", BUTTON_GPIO);
+  ESP_LOGI(TAG, "center button ready (GPIO %d, short/double/triple/long)",
+           BUTTON_GPIO);
   return ESP_OK;
 }

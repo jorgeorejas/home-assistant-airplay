@@ -11,14 +11,14 @@
 CONFIG_BOARD_HA_VOICE_PE=y
 CONFIG_DAC_TLV320AIC3204=y
 
-# --- AirPlay 1 (classic) mode ---
-# DenAir's UX relies on bidirectional volume: turning the encoder should
-# move the iPhone's AirPlay slider. That round-trip uses DACP, which iOS
-# only emits in AirPlay 1. Forcing AP1 also unlocks play/pause and track
-# skip controls from the device. Trade-off accepted: no Home app /
-# HomeKit "Hey Siri play on DenAir", no multi-room sync. Both are
-# explicit non-goals for Phase 1.
-CONFIG_AIRPLAY_FORCE_V1=y
+# --- AirPlay 2 (default), NOT forcing v1 ---
+# We briefly tried CONFIG_AIRPLAY_FORCE_V1=y to get bidirectional volume
+# via DACP (encoder → iPhone slider). Modern iOS no longer sends DACP-ID
+# headers even in AirPlay 1 to non-MFi devices — upstream's own comment
+# confirms this. Since AP1 gave us no benefit and cost us HomeKit/MRP
+# features, staying on AP2. Device → iPhone sync is an accepted
+# limitation; iPhone → device volume + all local controls work.
+# (CONFIG_AIRPLAY_FORCE_V1 intentionally unset here.)
 
 # --- GPIO overrides for HA Voice PE (see components/boards/ha_voice_pe/iot_board.h
 #     for the authoritative map; these mirror them into Kconfig so pieces of
