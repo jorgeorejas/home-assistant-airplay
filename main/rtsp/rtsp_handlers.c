@@ -10,6 +10,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include "denair_artwork.h"
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "esp_netif.h"
@@ -1427,11 +1428,16 @@ static void handle_set_parameter(int socket, rtsp_conn_t *conn,
     }
   } else if (strstr(req->content_type, "image/jpeg") ||
              strstr(req->content_type, "image/png")) {
-    // Artwork - log and flag in metadata
+    // Artwork - log, flag in metadata, and hand off to DenAir's JPEG
+    // decoder for dominant-hue extraction (non-blocking; the decode
+    // runs in its own task).
     ESP_LOGI(TAG, "Received artwork: %s (%zu bytes)", req->content_type,
              body_len);
     event_data.metadata.has_artwork = true;
     has_metadata = true;
+    if (body && body_len > 0) {
+      denair_artwork_update(body, body_len, req->content_type);
+    }
   } else if (strstr(req->content_type, "application/x-apple-binary-plist")) {
     if (body && body_len >= 8 && memcmp(body, "bplist00", 8) == 0) {
       int64_t value;

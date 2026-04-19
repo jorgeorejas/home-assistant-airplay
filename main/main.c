@@ -25,6 +25,7 @@
 #endif
 
 #include "iot_board.h"
+#include "denair_artwork.h"
 #include "denair_leds.h"
 #include "denair_ui.h"
 #include "esp_log.h"
@@ -227,6 +228,13 @@ void app_main(void) {
   if (ui_err != ESP_OK) {
     ESP_LOGW(TAG, "UI init failed: %s (audio still works)",
              esp_err_to_name(ui_err));
+  }
+
+  /* Artwork-hue extractor. Non-fatal; if decode fails the LED engine
+   * just keeps its time-based rotation. */
+  esp_err_t art_err = denair_artwork_init();
+  if (art_err != ESP_OK) {
+    ESP_LOGW(TAG, "artwork init failed: %s", esp_err_to_name(art_err));
   }
 
   // Pass the board-owned bus to the display so it reuses it rather than

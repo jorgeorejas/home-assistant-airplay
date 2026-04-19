@@ -61,6 +61,11 @@ static _Atomic int64_t s_power_on_at_us = 0;
 static int64_t s_last_rendered_beat_us = 0;
 static int64_t s_last_beat_flash_us = 0;
 
+/* Artwork-derived base hue. When s_base_hue_from_art is false the engine
+ * uses a time-based hue rotation instead. */
+static _Atomic int32_t s_base_hue_centideg = 0;   /* 0..36000 */
+static _Atomic bool    s_base_hue_from_art = false;
+
 /* ---------- Pixel helpers ---------- */
 
 static void hsv_to_rgb(float h, float s, float v, uint8_t *r, uint8_t *g, uint8_t *b) {
@@ -159,9 +164,14 @@ static void render_conn_out(int64_t now_us, int64_t until_us) {
 }
 
 static void render_playing(int64_t now_us) {
-  /* Base hue rotates 1 revolution / 20 s. Dim background. */
-  float t_s = (float)(now_us / 1000) / 1000.0f;
-  float hue = fmodf(t_s * (360.0f / 20.0f), 360.0f);
+  float hue;
+  if (atomic_load(&s_base_hue_from_art)) {
+    hue = (float)atomic_load(&s_base_hue_centideg) / 100.0f;
+  } else {
+    /* Fall back to time-based rotation: 1 revolution / 20 s. */
+    float t_s = (float)(now_us / 1000) / 1000.0f;
+    hue = fmodf(t_s * (360.0f / 20.0f), 360.0f);
+  }
 
   /* Beat flash: when audio_tap fires a new beat, start an exponential
    * decay. Decay factor decays toward 0 with time constant BEAT_DECAY_MS. */
@@ -339,4 +349,11 @@ void denair_leds_set_power(bool on) {
 
 bool denair_leds_is_powered(void) {
   return atomic_load(&s_powered);
+}
+
+void denair_leds_set_base_hue(float hue_deg, bool enabled) {
+  if (hue_deg < 0.0f) hue_deg += 360.0f;
+  if (hue_deg >= 360.0f) hue_deg = fmodf(hue_deg, 360.0f);
+  atomic_store(&s_base_hue_centideg, (int32_t)(hue_deg * 100.0f));
+  atomic_store(&s_base_hue_from_art, enabled);
 }

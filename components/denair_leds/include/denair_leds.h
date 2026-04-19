@@ -51,6 +51,16 @@ void denair_leds_flash_connection(void);
 void denair_leds_set_muted(bool muted);
 
 /**
+ * Override the PLAYING-mode base hue with a value derived from album
+ * artwork. When enabled=false (e.g. the image is near-grey) the engine
+ * falls back to the time-based hue rotation.
+ *
+ * @param hue_deg  0..360, dominant hue
+ * @param enabled  true to use it, false to revert to auto-rotate
+ */
+void denair_leds_set_base_hue(float hue_deg, bool enabled);
+
+/**
  * Audio tap — called from the audio playback task right before each
  * I2S write. Computes bass-band energy and drives a simple beat
  * detector. All heavy lifting stays on the audio core; the render task

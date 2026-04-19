@@ -89,6 +89,7 @@ set( DEPS
     boards
     dac
     dac_tas58xx
+    denair_artwork
     denair_leds
     denair_ui
     display
