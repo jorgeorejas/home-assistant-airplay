@@ -26,7 +26,7 @@ Target: **Home Assistant Voice Preview Edition** (NC-VK-9727). No hardware modif
 
 ## Pin map
 
-Authoritative source: [docs/home-assistant-voice-pe-dev/home-assistant-voice.yaml](home-assistant-voice-pe-dev/home-assistant-voice.yaml) (upstream ESPHome reference). Pre-pivot `vivla-voice-pe.yaml` at the `v0.1-voice` tag has a different GPIO47 mapping that appears to have been a typo; trust the upstream yaml.
+Authoritative source: [docs/home-assistant-voice-pe-dev/home-assistant-voice.yaml](home-assistant-voice-pe-dev/home-assistant-voice.yaml) (upstream ESPHome reference).
 
 | Function | GPIO | Direction | Detail |
 |---|---:|---|---|

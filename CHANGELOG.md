@@ -7,9 +7,8 @@ phase from the PRD (0 = viability, 1 = stable audio + controls, 2 = Phase 2
 features, etc.).
 
 Tags:
-- `v0.2.0-phase1` — Phase 1 complete (Unreleased at the time of writing)
+- `v0.2.0-phase1` — Phase 1 complete
 - `v0.1.0-phase0` — Phase 0 viability gate GREEN
-- `v0.1-voice` — final state of the pre-pivot `vivla_voice` lineage
 
 ## [Unreleased]
 
@@ -149,28 +148,6 @@ free** during an active ALAC session. See
   on.
 - No encoder volume yet, no LED engine yet.
 
-## [v0.1-voice] — 2026-04-18
-
-Pre-pivot snapshot. `vivla_voice` ESPHome component + minimal Voice PE
-firmware that streamed microphone audio over a WebSocket to a
-`vivla.ai` voice gateway (Gemini Live). This scope was abandoned in
-favour of the Home Assistant AirPlay receiver on 2026-04-19.
-
-All files under this tag are preserved in the git history:
-`git checkout v0.1-voice -- <path>` recovers anything from that era.
-
-### Included at tag
-- `esphome/components/vivla_voice/` — custom ESPHome external
-  component: WebSocket client, 8-state machine, mic/speaker plumbing,
-  wake-word start/stop actions, 11 automation triggers.
-- `vivla-voice-pe.yaml` — narrow firmware config (wake word + bridge,
-  no LEDs / encoder / jack).
-- `wake_word_models/okay_nabu.{tflite,json}` — local cache of the
-  micro\_wake\_word model.
-- `tools/probe-vivla-voice.mjs` — Node probe that validated the
-  bridge before flashing.
-
 [Unreleased]: https://github.com/jorgeorejas/home-assistant-airplay/compare/v0.2.0-phase1...HEAD
 [0.2.0-phase1]: https://github.com/jorgeorejas/home-assistant-airplay/compare/v0.1.0-phase0...v0.2.0-phase1
-[0.1.0-phase0]: https://github.com/jorgeorejas/home-assistant-airplay/compare/v0.1-voice...v0.1.0-phase0
-[v0.1-voice]: https://github.com/jorgeorejas/home-assistant-airplay/releases/tag/v0.1-voice
+[0.1.0-phase0]: https://github.com/jorgeorejas/home-assistant-airplay/releases/tag/v0.1.0-phase0

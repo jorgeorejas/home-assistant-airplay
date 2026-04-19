@@ -4,8 +4,7 @@
  *
  * Init sequence is a straight port of ESPHome's aic3204 component
  * (esphome/components/aic3204/aic3204.cpp on github.com/esphome/esphome).
- * That component is known to work on this exact hardware — see the
- * vivla-voice-pe.yaml config at the v0.1-voice tag, lines 96-132.
+ * That component is known to work on this exact hardware.
  *
  * Wiring on HA Voice PE:
  *   - I2C addr 0x18 (SDA=GPIO5, SCL=GPIO6, 400 kHz)

@@ -17,7 +17,7 @@ Upstream airplay-esp32 supplies drivers for the TI TAS57xx (SqueezeAMP) and TAS5
 
 ## Register sequence
 
-Ported from [ESPHome's `aic3204` component](https://github.com/esphome/esphome/tree/dev/esphome/components/aic3204), which is known-working on this exact hardware (the pre-pivot `vivla-voice-pe.yaml` at the `v0.1-voice` tag used it). See `dac_tlv320aic3204.c` for the full sequence — it's heavily commented.
+Ported from [ESPHome's `aic3204` component](https://github.com/esphome/esphome/tree/dev/esphome/components/aic3204), which is known-working on this exact hardware. See `dac_tlv320aic3204.c` for the full sequence — it's heavily commented.
 
 Key values:
 
