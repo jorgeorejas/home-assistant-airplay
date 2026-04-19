@@ -1,6 +1,15 @@
 # Hardware
 
-Target: **[Home Assistant Voice Preview Edition](https://www.home-assistant.io/voice-pe/)** (NC-VK-9727). No hardware modifications are required or expected.
+Target: **Home Assistant Voice Preview Edition** (NC-VK-9727). No hardware modifications are required or expected.
+
+**Official resources**
+
+- Product page: https://www.home-assistant.io/voice-pe/
+- User docs: https://voice-pe.home-assistant.io/
+- Hardware specs: https://voice-pe.home-assistant.io/hardware/
+- Stock firmware (ESPHome): https://github.com/esphome/home-assistant-voice-pe
+- Reinstall stock firmware: https://esphome.github.io/home-assistant-voice-pe/
+- Troubleshooting: https://voice-pe.home-assistant.io/troubleshooting/
 
 ## Board at a glance
 

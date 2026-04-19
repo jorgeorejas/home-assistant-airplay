@@ -2,6 +2,12 @@
 
 **AirPlay 2 receiver firmware for the [Home Assistant Voice Preview Edition](https://www.home-assistant.io/voice-pe/).** Turns the device into a hi-fi-class wireless audio endpoint that feeds a 3.5 mm jack, with a 12-LED ring that reacts to the music and follows the album artwork.
 
+> **About the hardware** —
+> [product page](https://www.home-assistant.io/voice-pe/) ·
+> [user docs](https://voice-pe.home-assistant.io/) ·
+> [stock firmware source](https://github.com/esphome/home-assistant-voice-pe) ·
+> [buy from Home Assistant](https://www.home-assistant.io/voice-pe/#order)
+
 ```
   iPhone / Mac ─── WiFi ──▶ HA Voice PE (ESP32-S3 + TLV320AIC3204)
                                    │
@@ -72,7 +78,13 @@ Every DenAir component has its own `README.md` explaining what it does, why, and
 
 ## Hardware
 
-Target: **Home Assistant Voice Preview Edition (NC-VK-9727)**. No physical modifications required. Full pin map and schematic references in [docs/hardware.md](docs/hardware.md).
+Target: **[Home Assistant Voice Preview Edition](https://www.home-assistant.io/voice-pe/)** (NC-VK-9727). No physical modifications required. Full pin map and schematic references in [docs/hardware.md](docs/hardware.md).
+
+- Product and purchase: https://www.home-assistant.io/voice-pe/
+- User documentation: https://voice-pe.home-assistant.io/
+- Hardware specs: https://voice-pe.home-assistant.io/hardware/
+- Stock (ESPHome) firmware source: https://github.com/esphome/home-assistant-voice-pe
+- Reinstall the stock firmware: https://esphome.github.io/home-assistant-voice-pe/
 
 ## Documentation index
 
