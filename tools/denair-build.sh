@@ -55,27 +55,55 @@ case "$TARGET" in
         ;;
 esac
 
-idf.py set-target esp32s3 >/dev/null
+# Pass SDKCONFIG_DEFAULTS through the environment so EVERY idf.py invocation
+# (including `set-target`, which otherwise discovers its own defaults and
+# locks in choice options before our overlay gets a chance) sees our full
+# defaults cascade. This avoids the infamous "choice default wins on
+# incremental reconfigure" trap where settings like CONFIG_BOARD_HA_VOICE_PE
+# silently get overridden back to CONFIG_BOARD_ESP32S3_GENERIC.
+export SDKCONFIG_DEFAULTS
+
+# Only set-target if the project has never been configured, to avoid
+# wiping a valid sdkconfig on every invocation. If the user switched
+# DENAIR_TARGET they should `tools/denair-build.sh clean` first.
+if [ ! -f sdkconfig ]; then
+    idf.py set-target esp32s3 >/dev/null
+fi
+
+# Auto-discover the Voice PE port if ESPPORT wasn't set. macOS exposes a
+# system /dev/cu.debug-console that idf.py's auto-discovery would otherwise
+# pick and fail on — filter it out.
+if [ -z "${ESPPORT:-}" ]; then
+    for p in /dev/cu.usbmodem* /dev/cu.usbserial*; do
+        [ -e "$p" ] || continue
+        case "$p" in
+            */debug-console) continue ;;
+        esac
+        export ESPPORT="$p"
+        break
+    done
+fi
 
 cmd="${1:-build}"
 case "$cmd" in
     reconfigure)
-        idf.py -DSDKCONFIG_DEFAULTS="${SDKCONFIG_DEFAULTS}" reconfigure
+        idf.py reconfigure
         ;;
     build)
-        idf.py -DSDKCONFIG_DEFAULTS="${SDKCONFIG_DEFAULTS}" build
+        idf.py build
         ;;
     flash)
-        idf.py -DSDKCONFIG_DEFAULTS="${SDKCONFIG_DEFAULTS}" flash
+        idf.py flash
         ;;
     monitor)
         idf.py monitor
         ;;
     menuconfig)
-        idf.py -DSDKCONFIG_DEFAULTS="${SDKCONFIG_DEFAULTS}" menuconfig
+        idf.py menuconfig
         ;;
     clean)
         idf.py fullclean
+        rm -f sdkconfig sdkconfig.old
         ;;
     *)
         echo "unknown subcommand: $cmd" >&2
