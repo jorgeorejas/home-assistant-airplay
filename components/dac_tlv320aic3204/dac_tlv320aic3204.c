@@ -2,17 +2,20 @@
  * @file dac_tlv320aic3204.c
  * @brief TI TLV320AIC3204 DAC driver for DenAir / HA Voice PE.
  *
- * Phase 0 scaffold: establishes the I2C transport, probes the chip, and
- * exposes the dac_ops_t contract with minimal working init + volume +
- * power. Output routing (headphone vs line-out vs class-D speaker drive)
- * is stubbed until hardware probing settles which AIC3204 output pins are
- * wired to the jack vs the internal TPA6211A on this board.
+ * Init sequence is a straight port of ESPHome's aic3204 component
+ * (esphome/components/aic3204/aic3204.cpp on github.com/esphome/esphome).
+ * That component is known to work on this exact hardware — see the
+ * vivla-voice-pe.yaml config at the v0.1-voice tag, lines 96-132.
+ *
+ * Wiring on HA Voice PE:
+ *   - I2C addr 0x18 (SDA=GPIO5, SCL=GPIO6, 400 kHz)
+ *   - I2S in from ESP32-S3: BCK=GPIO8, LRCLK=GPIO7, DIN=GPIO10, master
+ *   - HPL/HPR analog out → 3.5 mm jack (→ Denon AUX)
+ *   - LOL/LOR line out → TPA6211A internal speaker amp (enabled by
+ *     GPIO47 which is driven from components/boards/ha_voice_pe/board.c,
+ *     not here)
  *
  * Datasheet: https://www.ti.com/lit/ds/symlink/tlv320aic3204.pdf
- *
- * Reference register sequence cribbed from ESPHome's aic3204 component,
- * which is known to work on this exact hardware (see
- * vivla-voice-pe.yaml:96-132 in the v0.1-voice tag).
  */
 
 #include "dac_tlv320aic3204.h"
@@ -33,62 +36,146 @@ static const char TAG[] = "AIC3204";
 #define I2C_TIMEOUT_MS   50
 #define I2C_SPEED_HZ     400000
 
-/* Page-0 registers */
-#define REG_PAGE_SEL         0x00
-#define REG_SOFT_RESET       0x01
-#define REG_DAC_LEFT_VOL     0x41 /* 65 dec */
-#define REG_DAC_RIGHT_VOL    0x42 /* 66 dec */
-#define REG_DAC_CHANNEL_SETUP 0x3F /* 63 dec */
-#define REG_DAC_MUTE         0x40 /* 64 dec */
+/* ---------- Register addresses (from ESPHome's aic3204.h) ---------- */
+
+/* Page 0 */
+#define AIC3204_PAGE_CTRL      0x00
+#define AIC3204_SW_RST         0x01
+#define AIC3204_CLK_PLL1       0x04
+#define AIC3204_CLK_PLL2       0x05
+#define AIC3204_CLK_PLL3       0x06
+#define AIC3204_NDAC           0x0B
+#define AIC3204_MDAC           0x0C
+#define AIC3204_DOSR           0x0E
+#define AIC3204_CODEC_IF       0x1B
+#define AIC3204_AUDIO_IF_4     0x1F
+#define AIC3204_AUDIO_IF_5     0x20
+#define AIC3204_SCLK_MFP3      0x38
+#define AIC3204_DAC_SIG_PROC   0x3C
+#define AIC3204_DAC_CH_SET1    0x3F
+#define AIC3204_DAC_CH_SET2    0x40
+#define AIC3204_DACL_VOL_D     0x41
+#define AIC3204_DACR_VOL_D     0x42
+
+/* Page 1 */
+#define AIC3204_PWR_CFG        0x01
+#define AIC3204_LDO_CTRL       0x02
+#define AIC3204_PLAY_CFG1      0x03
+#define AIC3204_PLAY_CFG2      0x04
+#define AIC3204_OP_PWR_CTRL    0x09
+#define AIC3204_CM_CTRL        0x0A
+#define AIC3204_HPL_ROUTE      0x0C
+#define AIC3204_HPR_ROUTE      0x0D
+#define AIC3204_LOL_ROUTE      0x0E
+#define AIC3204_LOR_ROUTE      0x0F
+#define AIC3204_HPL_GAIN       0x10
+#define AIC3204_HPR_GAIN       0x11
+#define AIC3204_LOL_DRV_GAIN   0x12
+#define AIC3204_LOR_DRV_GAIN   0x13
+#define AIC3204_HP_START       0x14
+#define AIC3204_REF_STARTUP    0x7B
+
+/* ---------- State ---------- */
 
 static i2c_master_dev_handle_t s_dev = NULL;
-static float s_volume_db_cache = -96.0f;
+static float s_volume_db_cache = 0.0f;
 static bool s_initialized = false;
+static bool s_muted = false;
 
-/* ---------- Low-level I2C helpers ---------- */
+/* ---------- I2C helpers ---------- */
 
 static esp_err_t write_reg(uint8_t reg, uint8_t value) {
   uint8_t buf[2] = {reg, value};
-  return i2c_master_transmit(s_dev, buf, sizeof(buf), I2C_TIMEOUT_MS);
+  esp_err_t err = i2c_master_transmit(s_dev, buf, sizeof(buf), I2C_TIMEOUT_MS);
+  if (err != ESP_OK) {
+    ESP_LOGW(TAG, "i2c write reg=0x%02X val=0x%02X failed: %s", reg, value,
+             esp_err_to_name(err));
+  }
+  return err;
 }
 
 static esp_err_t select_page(uint8_t page) {
-  return write_reg(REG_PAGE_SEL, page);
+  return write_reg(AIC3204_PAGE_CTRL, page);
 }
 
-/* ---------- Init sequence ---------- */
+/* ---------- Init sequence (port of ESPHome aic3204::setup) ---------- */
 
-static esp_err_t soft_reset(void) {
-  ESP_RETURN_ON_ERROR(select_page(0), TAG, "page 0");
-  ESP_RETURN_ON_ERROR(write_reg(REG_SOFT_RESET, 0x01), TAG, "soft reset");
+static esp_err_t setup_codec(void) {
+  /* --- Page 0: digital side, clocking, DAC processing --- */
+  ESP_RETURN_ON_ERROR(select_page(0),                         TAG, "page 0");
+  ESP_RETURN_ON_ERROR(write_reg(AIC3204_SW_RST,       0x01),  TAG, "soft reset");
   vTaskDelay(pdMS_TO_TICKS(10));
-  return ESP_OK;
-}
 
-static esp_err_t init_codec(void) {
-  /* Phase 0 minimal bring-up. Real clocking, PLL, output routing, and
-   * channel path setup lands after the first audio-out bring-up on bench.
-   * The list below covers the registers that must be touched before the
-   * chip will pass audio even in its simplest mode. Leaving them as TODOs
-   * keeps this file honest about what Phase 0 actually does. */
+  /* PLL / clocking: NDAC=2, MDAC=2, DOSR=128, power-on bit set.
+   * These match ESPHome's working config on this hardware; BCLK is the
+   * implicit clock source — no external MCLK wired. */
+  ESP_RETURN_ON_ERROR(write_reg(AIC3204_NDAC,         0x82),  TAG, "NDAC");
+  ESP_RETURN_ON_ERROR(write_reg(AIC3204_MDAC,         0x82),  TAG, "MDAC");
+  ESP_RETURN_ON_ERROR(write_reg(AIC3204_DOSR,         0x80),  TAG, "DOSR");
 
-  /* TODO(phase0): PLL setup — page 0 regs 4-6 (clock source, P/R/J/D) */
-  /* TODO(phase0): NDAC/MDAC/DOSR dividers — page 0 regs 11-14 */
-  /* TODO(phase0): CODEC_INTERFACE — page 0 reg 27 (I2S, 16-bit, BCLK slave) */
-  /* TODO(phase0): DAC data-path — page 0 reg 63 (DAC channel setup) */
-  /* TODO(phase0): Output routing — page 1 regs 12-16 (HP/SPK routing, gains) */
+  /* Codec interface: I2S, 32-bit word length, BCLK/WCLK slave from MCU */
+  ESP_RETURN_ON_ERROR(write_reg(AIC3204_CODEC_IF,     0x30),  TAG, "CODEC_IF");
+  ESP_RETURN_ON_ERROR(write_reg(AIC3204_SCLK_MFP3,    0x02),  TAG, "SCLK_MFP3");
+  ESP_RETURN_ON_ERROR(write_reg(AIC3204_AUDIO_IF_4,   0x01),  TAG, "AUDIO_IF_4");
+  ESP_RETURN_ON_ERROR(write_reg(AIC3204_AUDIO_IF_5,   0x01),  TAG, "AUDIO_IF_5");
 
-  /* Default the digital volume to the max-volume ceiling (e.g. -6 dB at
-   * CONFIG_TLV320AIC3204_MAX_VOLUME_DB). AirPlay client will call
-   * dac_set_volume() to attenuate below this. */
-  ESP_RETURN_ON_ERROR(select_page(0), TAG, "page 0 for vol");
+  /* DAC signal processing block PRB_P1 (standard stereo) */
+  ESP_RETURN_ON_ERROR(write_reg(AIC3204_DAC_SIG_PROC, 0x01),  TAG, "DAC_SIG_PROC");
+
+  /* --- Page 1: analog side, power, output routing --- */
+  ESP_RETURN_ON_ERROR(select_page(1),                         TAG, "page 1");
+
+  /* Analog LDO up, common mode 0.75V */
+  ESP_RETURN_ON_ERROR(write_reg(AIC3204_LDO_CTRL,     0x09),  TAG, "LDO enable AVDD");
+  ESP_RETURN_ON_ERROR(write_reg(AIC3204_PWR_CFG,      0x08),  TAG, "disable crude AVdd");
+  ESP_RETURN_ON_ERROR(write_reg(AIC3204_LDO_CTRL,     0x01),  TAG, "LDO master power");
+  ESP_RETURN_ON_ERROR(write_reg(AIC3204_CM_CTRL,      0x40),  TAG, "CM = 0.75V");
+
+  /* DAC PowerTune config (default) */
+  ESP_RETURN_ON_ERROR(write_reg(AIC3204_PLAY_CFG1,    0x00),  TAG, "PLAY_CFG1");
+  ESP_RETURN_ON_ERROR(write_reg(AIC3204_PLAY_CFG2,    0x00),  TAG, "PLAY_CFG2");
+
+  /* Reference charging + HP soft-step */
+  ESP_RETURN_ON_ERROR(write_reg(AIC3204_REF_STARTUP,  0x01),  TAG, "REF 40ms");
+  ESP_RETURN_ON_ERROR(write_reg(AIC3204_HP_START,     0x25),  TAG, "HP soft step");
+
+  /* Output routing: left DAC → HPL + LOL, right DAC → HPR + LOR.
+   * Both paths drive simultaneously — the 3.5 mm jack (HP) and the
+   * internal amp (LO). Amp enable is GPIO-gated in board.c. */
+  ESP_RETURN_ON_ERROR(write_reg(AIC3204_HPL_ROUTE,    0x08),  TAG, "HPL route");
+  ESP_RETURN_ON_ERROR(write_reg(AIC3204_HPR_ROUTE,    0x08),  TAG, "HPR route");
+  ESP_RETURN_ON_ERROR(write_reg(AIC3204_LOL_ROUTE,    0x08),  TAG, "LOL route");
+  ESP_RETURN_ON_ERROR(write_reg(AIC3204_LOR_ROUTE,    0x08),  TAG, "LOR route");
+
+  /* Driver gains — HP -2 dB (ESPHome default), LO 0 dB, all unmuted */
+  ESP_RETURN_ON_ERROR(write_reg(AIC3204_HPL_GAIN,     0x3E),  TAG, "HPL gain");
+  ESP_RETURN_ON_ERROR(write_reg(AIC3204_HPR_GAIN,     0x3E),  TAG, "HPR gain");
+  ESP_RETURN_ON_ERROR(write_reg(AIC3204_LOL_DRV_GAIN, 0x00),  TAG, "LOL gain");
+  ESP_RETURN_ON_ERROR(write_reg(AIC3204_LOR_DRV_GAIN, 0x00),  TAG, "LOR gain");
+
+  /* Power up HPL, HPR, LOL, LOR output drivers */
+  ESP_RETURN_ON_ERROR(write_reg(AIC3204_OP_PWR_CTRL,  0x3C),  TAG, "OP power");
+
+  /* Give the HP / LO drivers time to ramp before enabling the DAC channels.
+   * ESPHome uses 2.5 s; we match that but note the boot-time cost. */
+  vTaskDelay(pdMS_TO_TICKS(2500));
+
+  /* --- Page 0 again: power up DAC channels, set initial volume + unmute --- */
+  ESP_RETURN_ON_ERROR(select_page(0),                         TAG, "page 0 dac up");
+  /* 0xD4: L + R DAC powered, soft-step 1x per sample, data path left→left etc. */
+  ESP_RETURN_ON_ERROR(write_reg(AIC3204_DAC_CH_SET1,  0xD4),  TAG, "DAC_CH_SET1");
+
+  /* Leave volume at the ceiling; AirPlay will attenuate below this. */
   const int8_t max_vol_db = CONFIG_TLV320AIC3204_MAX_VOLUME_DB;
-  /* Page 0 reg 65/66 are signed 8-bit, 0.5 dB step, 0x00 = 0 dB. */
-  uint8_t vol_code = (uint8_t)(max_vol_db * 2); /* two's-complement wrap */
-  ESP_RETURN_ON_ERROR(write_reg(REG_DAC_LEFT_VOL, vol_code), TAG, "left vol");
-  ESP_RETURN_ON_ERROR(write_reg(REG_DAC_RIGHT_VOL, vol_code), TAG, "right vol");
+  uint8_t vol_code = (uint8_t)(max_vol_db * 2);
+  ESP_RETURN_ON_ERROR(write_reg(AIC3204_DACL_VOL_D,   vol_code), TAG, "L vol");
+  ESP_RETURN_ON_ERROR(write_reg(AIC3204_DACR_VOL_D,   vol_code), TAG, "R vol");
+
+  /* DAC_CH_SET2: bits[3:2] mute, bits[6:4] auto-mute mode. 0x00 = unmuted, no auto-mute. */
+  ESP_RETURN_ON_ERROR(write_reg(AIC3204_DAC_CH_SET2,  0x00),  TAG, "DAC unmute");
 
   s_volume_db_cache = (float)max_vol_db;
+  s_muted = false;
   return ESP_OK;
 }
 
@@ -106,20 +193,25 @@ static esp_err_t aic3204_init(void *i2c_bus) {
       .device_address = AIC3204_I2C_ADDR,
       .scl_speed_hz = I2C_SPEED_HZ,
   };
-  esp_err_t err = i2c_master_bus_add_device(
-      (i2c_master_bus_handle_t)i2c_bus, &dev_cfg, &s_dev);
-  ESP_RETURN_ON_ERROR(err, TAG, "add aic3204 on i2c");
+  ESP_RETURN_ON_ERROR(
+      i2c_master_bus_add_device((i2c_master_bus_handle_t)i2c_bus, &dev_cfg, &s_dev),
+      TAG, "i2c add device");
 
-  ESP_RETURN_ON_ERROR(soft_reset(), TAG, "soft reset");
-  ESP_RETURN_ON_ERROR(init_codec(), TAG, "codec init");
+  ESP_RETURN_ON_ERROR(setup_codec(), TAG, "setup codec");
 
   s_initialized = true;
-  ESP_LOGI(TAG, "AIC3204 online at I2C addr 0x%02X", AIC3204_I2C_ADDR);
+  ESP_LOGI(TAG, "AIC3204 online @ 0x%02X", AIC3204_I2C_ADDR);
   return ESP_OK;
 }
 
 static esp_err_t aic3204_deinit(void) {
   if (!s_initialized) return ESP_OK;
+
+  /* Mute + power down DAC channels before tearing down I2C. */
+  select_page(0);
+  write_reg(AIC3204_DAC_CH_SET2, 0x0C); /* mute L+R */
+  write_reg(AIC3204_DAC_CH_SET1, 0x14); /* power down DACs */
+
   if (s_dev) {
     i2c_master_bus_rm_device(s_dev);
     s_dev = NULL;
@@ -131,8 +223,8 @@ static esp_err_t aic3204_deinit(void) {
 static void aic3204_set_volume(float volume_db) {
   if (!s_initialized) return;
 
-  /* AirPlay scale is -30..0 dB. Map linearly onto the ceiling defined by
-   * CONFIG_TLV320AIC3204_MAX_VOLUME_DB down to -63.5 dB (chip floor). */
+  /* AirPlay volume range is -30..0 dB. Map linearly onto the DAC ceiling
+   * (CONFIG_TLV320AIC3204_MAX_VOLUME_DB) down to -63.5 dB (chip floor). */
   const float ceil_db = (float)CONFIG_TLV320AIC3204_MAX_VOLUME_DB;
   const float floor_db = -63.5f;
   float db = ceil_db + (volume_db * (ceil_db - floor_db) / 30.0f);
@@ -144,8 +236,8 @@ static void aic3204_set_volume(float volume_db) {
   uint8_t vol_code = (uint8_t)step;
 
   select_page(0);
-  write_reg(REG_DAC_LEFT_VOL, vol_code);
-  write_reg(REG_DAC_RIGHT_VOL, vol_code);
+  write_reg(AIC3204_DACL_VOL_D, vol_code);
+  write_reg(AIC3204_DACR_VOL_D, vol_code);
   s_volume_db_cache = db;
   ESP_LOGD(TAG, "set_volume airplay_db=%.1f → dac_db=%.1f code=0x%02X",
            volume_db, db, vol_code);
@@ -156,30 +248,32 @@ static void aic3204_set_power_mode(dac_power_mode_t mode) {
   select_page(0);
   switch (mode) {
   case DAC_POWER_ON:
-    /* TODO(phase0): enable DAC channels via reg 63 + clear mute in reg 64 */
-    write_reg(REG_DAC_MUTE, 0x00);
+    write_reg(AIC3204_DAC_CH_SET1, 0xD4); /* both channels on, soft-step */
+    write_reg(AIC3204_DAC_CH_SET2, 0x00); /* unmute */
+    s_muted = false;
     break;
   case DAC_POWER_STANDBY:
-    write_reg(REG_DAC_MUTE, 0x0C); /* mute L+R, channels stay powered */
+    write_reg(AIC3204_DAC_CH_SET2, 0x0C); /* mute L+R, keep channels powered */
+    s_muted = true;
     break;
   case DAC_POWER_OFF:
-    /* TODO(phase0): power down DAC channels via reg 63 */
-    write_reg(REG_DAC_MUTE, 0x0C);
+    write_reg(AIC3204_DAC_CH_SET2, 0x0C); /* mute */
+    write_reg(AIC3204_DAC_CH_SET1, 0x14); /* DACs powered down */
+    s_muted = true;
     break;
   }
 }
 
 static void aic3204_enable_speaker(bool enable) {
-  /* GPIO47 (amp enable) lives on the board layer, not here — see
-   * components/boards/ha_voice_pe/board.c. This callback is a hook for
-   * future routing (e.g., SPK output path enable/disable in the codec). */
+  /* GPIO47 (internal TPA6211A amp enable) is managed by the board layer
+   * — see components/boards/ha_voice_pe/board.c. The AIC3204 LO path that
+   * feeds the amp is kept always-routed; gating happens at the amp's EN pin. */
   (void)enable;
-  /* TODO(phase1): toggle AIC3204 SPK output path if / when we enable it */
 }
 
 static void aic3204_enable_line_out(bool enable) {
-  /* Line-out is the primary path on DenAir (→ 3.5 mm jack → Denon). Always
-   * routed and enabled once the chip is up; caller toggles via volume / mute. */
+  /* The 3.5 mm jack is the primary DenAir output and the HP path stays
+   * always-routed. Per-session enable/disable happens via mute, not routing. */
   (void)enable;
 }
 
