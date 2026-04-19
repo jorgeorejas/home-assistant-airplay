@@ -170,7 +170,7 @@ All files under this tag are preserved in the git history:
 - `tools/probe-vivla-voice.mjs` — Node probe that validated the
   bridge before flashing.
 
-[Unreleased]: https://github.com/jorgeorejas/homeassistant-vivla/compare/v0.2.0-phase1...HEAD
-[0.2.0-phase1]: https://github.com/jorgeorejas/homeassistant-vivla/compare/v0.1.0-phase0...v0.2.0-phase1
-[0.1.0-phase0]: https://github.com/jorgeorejas/homeassistant-vivla/compare/v0.1-voice...v0.1.0-phase0
-[v0.1-voice]: https://github.com/jorgeorejas/homeassistant-vivla/releases/tag/v0.1-voice
+[Unreleased]: https://github.com/jorgeorejas/home-assistant-airplay/compare/v0.2.0-phase1...HEAD
+[0.2.0-phase1]: https://github.com/jorgeorejas/home-assistant-airplay/compare/v0.1.0-phase0...v0.2.0-phase1
+[0.1.0-phase0]: https://github.com/jorgeorejas/home-assistant-airplay/compare/v0.1-voice...v0.1.0-phase0
+[v0.1-voice]: https://github.com/jorgeorejas/home-assistant-airplay/releases/tag/v0.1-voice
