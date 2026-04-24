@@ -9,7 +9,7 @@
  * Leave _SSID_2 empty ("") if you only have one network.
  */
 
-#define HA_AIRPLAY_DEVICE_NAME       "Home Assistant AirPlay"   // base mDNS name; MAC suffix appended at runtime
+#define HA_AIRPLAY_DEVICE_NAME       "Home Assistant AirPlay"   // base mDNS / AirPlay display name; MAC prepended for _raop service
 
 #define WIFI_SSID_1              "YourMainSSID"
 #define WIFI_PASSWORD_1          "YourMainPassword"

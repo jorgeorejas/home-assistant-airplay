@@ -167,6 +167,21 @@ static void seed_wifi_credentials_from_config(void) {
 #endif
 }
 
+/* Seed the AirPlay device name from wifi_config.h's HA_AIRPLAY_DEVICE_NAME on
+ * every boot. Matches the "re-flash is the source of truth" rule used for WiFi
+ * creds — renaming is a compile-time change, not a runtime one. */
+static void seed_device_name_from_config(void) {
+#if HA_AIRPLAY_HAVE_WIFI_CONFIG && defined(HA_AIRPLAY_DEVICE_NAME)
+  esp_err_t err = settings_set_device_name(HA_AIRPLAY_DEVICE_NAME);
+  if (err == ESP_OK) {
+    ESP_LOGI(TAG, "seeded AirPlay device name='%s' from wifi_config.h",
+             HA_AIRPLAY_DEVICE_NAME);
+  } else {
+    ESP_LOGW(TAG, "seeding device name failed: %s", esp_err_to_name(err));
+  }
+#endif
+}
+
 /* ------------------------------------------------------------------ */
 /*  Board interface                                                    */
 /* ------------------------------------------------------------------ */
@@ -207,6 +222,7 @@ esp_err_t iot_board_init(void) {
    * runs in app_main. Supervisor timer fires later (after WiFi is up) and
    * flips to the fallback SSID if the primary doesn't associate. */
   seed_wifi_credentials_from_config();
+  seed_device_name_from_config();
 #if HA_AIRPLAY_HAVE_WIFI_CONFIG
   start_wifi_fallback_supervisor();
 #endif
