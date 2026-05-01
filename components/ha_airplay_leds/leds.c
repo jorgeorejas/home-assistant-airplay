@@ -53,8 +53,11 @@ static _Atomic int64_t s_conn_in_until_us = 0;
 static _Atomic int64_t s_conn_out_until_us = 0;
 static _Atomic bool s_muted = false;
 
-/* Power rail state (GPIO45) + wall-clock of last power-on for settle wait. */
-static _Atomic bool s_powered = false;
+/* GPIO45 (WS2812B VCC rail) is driven HIGH at init and stays on. The
+   slide-switch now toggles `s_decorative_enabled` instead — utility
+   overlays (mute, volume, connection) always render, decorative
+   animations (PLAYING, IDLE) blank out when the slide is off. */
+static _Atomic bool s_decorative_enabled = true;
 static _Atomic int64_t s_power_on_at_us = 0;
 
 /* Track last observed beat timestamp to detect "new beat since last frame" */
@@ -219,19 +222,17 @@ static void led_task(void *arg) {
   for (;;) {
     int64_t now = esp_timer_get_time();
 
-    /* Power gating: if the rail is off, do nothing (no data clock →
-     * strip stays dark even if cached). When it flips back on, give the
-     * LDO/cap a few ms to settle before we start writing pixels. */
-    if (!atomic_load(&s_powered)) {
-      vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(LED_RENDER_MS));
-      continue;
-    }
+    /* One-time settle after init powers GPIO45 HIGH — gives the LDO and
+     * bypass cap a few ms before we clock the first pixels, otherwise the
+     * leading bytes come out garbled. */
     int64_t power_on_at = atomic_load(&s_power_on_at_us);
     if (power_on_at > 0 && now - power_on_at < (int64_t)LED_POWER_SETTLE_MS * 1000) {
       vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(LED_RENDER_MS));
       continue;
     }
 
+    /* Utility overlays render unconditionally — the user always wants to
+     * see mute / volume / connection feedback regardless of the slide. */
     if (atomic_load(&s_muted)) {
       render_muted();
     } else if (now < atomic_load(&s_volume_overlay_until_us)) {
@@ -240,6 +241,11 @@ static void led_task(void *arg) {
       render_conn_in(now, atomic_load(&s_conn_in_until_us));
     } else if (now < atomic_load(&s_conn_out_until_us)) {
       render_conn_out(now, atomic_load(&s_conn_out_until_us));
+    } else if (!atomic_load(&s_decorative_enabled)) {
+      /* Slide is off — keep the ring dark when no utility event is active. */
+      for (int i = 0; i < LED_COUNT; i++) {
+        led_strip_set_pixel(s_strip, i, 0, 0, 0);
+      }
     } else {
       int state = atomic_load(&s_playback_state);
       if (state == HA_AIRPLAY_PLAYBACK_PLAYING) {
@@ -259,9 +265,10 @@ static void led_task(void *arg) {
 esp_err_t ha_airplay_leds_init(void) {
   if (s_strip) return ESP_OK;
 
-  /* Configure the LED VCC rail on GPIO45 as output. Start LOW (ring off)
-   * — a UI input (hardware mute slide on GPIO3) decides when to turn
-   * it on. */
+  /* GPIO45 gates the WS2812B VCC rail. We power it HIGH at init and
+   * leave it on so utility overlays (mute, volume, connection) can
+   * render any time. The slide switch now toggles a software flag that
+   * gates only the decorative renders — see s_decorative_enabled. */
   gpio_config_t power_cfg = {
       .pin_bit_mask = (1ULL << LED_POWER_GPIO),
       .mode = GPIO_MODE_OUTPUT,
@@ -270,8 +277,8 @@ esp_err_t ha_airplay_leds_init(void) {
       .intr_type = GPIO_INTR_DISABLE,
   };
   gpio_config(&power_cfg);
-  gpio_set_level(LED_POWER_GPIO, 0);
-  atomic_store(&s_powered, false);
+  gpio_set_level(LED_POWER_GPIO, 1);
+  atomic_store(&s_power_on_at_us, esp_timer_get_time());
 
   led_strip_config_t strip_cfg = {
       .strip_gpio_num = LED_GPIO,
@@ -333,22 +340,14 @@ void ha_airplay_leds_set_muted(bool muted) {
   atomic_store(&s_muted, muted);
 }
 
-void ha_airplay_leds_set_power(bool on) {
-  bool prev = atomic_exchange(&s_powered, on);
-  if (prev == on) return;
-  if (on) {
-    gpio_set_level(LED_POWER_GPIO, 1);
-    atomic_store(&s_power_on_at_us, esp_timer_get_time());
-    ESP_LOGI(TAG, "LED power ON");
-  } else {
-    gpio_set_level(LED_POWER_GPIO, 0);
-    atomic_store(&s_power_on_at_us, 0);
-    ESP_LOGI(TAG, "LED power OFF");
-  }
+void ha_airplay_leds_set_decorative_enabled(bool enabled) {
+  bool prev = atomic_exchange(&s_decorative_enabled, enabled);
+  if (prev == enabled) return;
+  ESP_LOGI(TAG, "decorative effects %s", enabled ? "ON" : "OFF");
 }
 
-bool ha_airplay_leds_is_powered(void) {
-  return atomic_load(&s_powered);
+bool ha_airplay_leds_decorative_is_enabled(void) {
+  return atomic_load(&s_decorative_enabled);
 }
 
 void ha_airplay_leds_set_base_hue(float hue_deg, bool enabled) {
