@@ -27,3 +27,29 @@ esp_err_t ha_airplay_artwork_init(void);
  */
 void ha_airplay_artwork_update(const uint8_t *bytes, size_t len,
                            const char *content_type);
+
+/**
+ * Borrow the latest JPEG bytes for serving over HTTP. The internal
+ * buffer is held under a mutex while the lock is taken; release the
+ * lock as soon as the bytes are copied or sent.
+ *
+ * Usage:
+ *   const uint8_t *p; size_t n; uint32_t etag;
+ *   if (ha_airplay_artwork_lock(&p, &n, &etag) == ESP_OK) {
+ *     // serve bytes (do not retain across releases)
+ *     ha_airplay_artwork_unlock();
+ *   }
+ *
+ * @return ESP_OK on success, ESP_ERR_NOT_FOUND if no artwork has been
+ *         received yet, ESP_ERR_TIMEOUT if the lock could not be taken.
+ */
+esp_err_t ha_airplay_artwork_lock(const uint8_t **out_bytes, size_t *out_len,
+                                  uint32_t *out_etag);
+void ha_airplay_artwork_unlock(void);
+
+/**
+ * Read just the etag of the current artwork without taking the bytes
+ * lock. Used for cheap "did the artwork change?" polling.
+ * @return current etag, or 0 if no artwork is cached.
+ */
+uint32_t ha_airplay_artwork_etag(void);

@@ -36,9 +36,12 @@ button.danger{color:#ff453a}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(80px);background:var(--card);border:1px solid var(--line);padding:10px 16px;border-radius:9px;opacity:0;transition:all .25s}
 .toast.show{transform:translateX(-50%) translateY(0);opacity:1}
 footer{margin-top:24px;color:var(--dim);font-size:12px;text-align:center}
-.np{display:flex;flex-direction:column;gap:4px;min-height:84px;justify-content:center}
-.np .title{font-size:20px;font-weight:600;letter-spacing:-0.2px}
-.np .meta{color:var(--dim);font-size:14px}
+.np{display:flex;gap:14px;align-items:center;min-height:88px}
+.np .art{width:88px;height:88px;border-radius:8px;flex-shrink:0;object-fit:cover;background:var(--line);box-shadow:0 4px 12px rgba(0,0,0,0.4);transition:opacity .25s}
+.np .art.empty{opacity:0;width:0;height:0;margin:0;box-shadow:none}
+.np .text{display:flex;flex-direction:column;gap:4px;flex:1;min-width:0;justify-content:center}
+.np .title{font-size:20px;font-weight:600;letter-spacing:-0.2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.np .meta{color:var(--dim);font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .np .pill{display:inline-block;padding:3px 9px;border-radius:99px;font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:0.4px;background:var(--line);color:var(--dim);margin-bottom:8px;width:fit-content}
 .np .pill.playing{background:rgba(48,209,88,.18);color:var(--good)}
 .np .pill.connected{background:rgba(10,132,255,.18);color:var(--accent)}
@@ -58,7 +61,8 @@ footer{margin-top:24px;color:var(--dim);font-size:12px;text-align:center}
 <section class="card">
   <h2>Now playing</h2>
   <div class="np" id="np">
-    <span class="empty">Idle</span>
+    <img id="art" class="art empty" alt="">
+    <div class="text" id="np-text"><span class="empty">Idle</span></div>
   </div>
 </section>
 
@@ -155,10 +159,24 @@ document.getElementById('restart').addEventListener('click',async()=>{
 function fmtTime(s){if(!s||s<0)s=0;s=Math.floor(s);const m=Math.floor(s/60),x=s%60;return m+':'+(x<10?'0':'')+x}
 function escapeHtml(s){return (s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 
-const npEl=document.getElementById('np');
+const npTextEl=document.getElementById('np-text');
+const artEl=document.getElementById('art');
+let lastArtEtag=0;
 function renderNp(np){
+  // Artwork: only swap <img src> when the etag changes; the device handles
+  // 304 If-None-Match anyway but we save the round trip.
+  const etag=np&&np.artwork_etag||0;
+  if(etag&&etag!==lastArtEtag){
+    artEl.src='/api/artwork.jpg?v='+etag;
+    artEl.classList.remove('empty');
+    lastArtEtag=etag;
+  } else if(!etag){
+    artEl.classList.add('empty');
+    artEl.removeAttribute('src');
+    lastArtEtag=0;
+  }
   if(!np||np.state==='idle'||(!np.title&&!np.artist&&np.state!=='connected')){
-    npEl.innerHTML='<span class="empty">Idle</span>';
+    npTextEl.innerHTML='<span class="empty">Idle</span>';
     return;
   }
   const pillClass=np.state==='playing'?'playing':(np.state==='paused'?'paused':'connected');
@@ -172,7 +190,7 @@ function renderNp(np){
     html+='<div class="progress"><div style="width:'+pct.toFixed(1)+'%"></div></div>';
     html+='<div class="times"><span>'+fmtTime(np.position_secs)+'</span><span>'+fmtTime(np.duration_secs)+'</span></div>';
   }
-  npEl.innerHTML=html;
+  npTextEl.innerHTML=html;
 }
 
 async function refresh(){
