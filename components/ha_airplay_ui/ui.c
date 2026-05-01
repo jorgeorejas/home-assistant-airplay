@@ -167,6 +167,12 @@ esp_err_t ha_airplay_ui_init(void) {
     ESP_LOGW(TAG, "LED on/off switch init failed: %s", esp_err_to_name(sw_err));
   }
 
+  esp_err_t jack_err = ha_airplay_jack_detect_start();
+  if (jack_err != ESP_OK) {
+    ESP_LOGW(TAG, "jack-detect init failed: %s (output won't auto-switch)",
+             esp_err_to_name(jack_err));
+  }
+
   rtsp_events_register(on_rtsp_event, NULL);
 
   BaseType_t ok = xTaskCreate(volume_poll_task, "ha_airplay_volpoll", 3072, NULL,

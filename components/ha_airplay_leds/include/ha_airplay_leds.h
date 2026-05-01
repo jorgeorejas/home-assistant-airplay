@@ -57,6 +57,16 @@ void ha_airplay_leds_flash_connection(void);
 void ha_airplay_leds_set_muted(bool muted);
 
 /**
+ * 5 s output-destination overlay shown when the 3.5 mm jack is inserted
+ * or removed. Cyan ring = audio routed to jack; amber ring = audio
+ * routed to internal speaker. Renders in the utility-overlay slot so it
+ * shows even with the slide in decorative-off position.
+ *
+ * @param jack_in true if the jack just got plugged in, false on removal
+ */
+void ha_airplay_leds_show_output_change(bool jack_in);
+
+/**
  * Override the PLAYING-mode base hue with a value derived from album
  * artwork. When enabled=false (e.g. the image is near-grey) the engine
  * falls back to the time-based hue rotation.

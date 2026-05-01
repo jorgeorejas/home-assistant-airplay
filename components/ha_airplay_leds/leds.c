@@ -51,6 +51,8 @@ static _Atomic int s_volume_fill_x1000 = 500;
 static _Atomic int64_t s_volume_overlay_until_us = 0;
 static _Atomic int64_t s_conn_in_until_us = 0;
 static _Atomic int64_t s_conn_out_until_us = 0;
+static _Atomic int64_t s_output_overlay_until_us = 0;
+static _Atomic bool s_output_jack_in = false;
 static _Atomic bool s_muted = false;
 
 /* GPIO45 (WS2812B VCC rail) is driven HIGH at init and stays on. The
@@ -109,6 +111,34 @@ static void render_muted(void) {
     } else {
       led_strip_set_pixel(s_strip, i, 0, 0, 0);
     }
+  }
+}
+
+static void render_output_change(int64_t now_us, int64_t until_us) {
+  /* Solid ring in cyan (jack inserted) or amber (internal speaker), with
+     a soft fade-in over the first 200 ms and fade-out over the last
+     500 ms so the transition feels intentional rather than abrupt. */
+  bool jack = atomic_load(&s_output_jack_in);
+  float remaining_s = (float)(until_us - now_us) / 1e6f;
+  float total_s = 5.0f;
+  float elapsed_s = total_s - remaining_s;
+  float fade_in = elapsed_s < 0.2f ? elapsed_s / 0.2f : 1.0f;
+  float fade_out = remaining_s < 0.5f ? remaining_s / 0.5f : 1.0f;
+  float a = fade_in < fade_out ? fade_in : fade_out;
+  if (a < 0.0f) a = 0.0f;
+
+  uint8_t r, g, b;
+  if (jack) { /* cyan ~= 180° HSV */
+    r = (uint8_t)(0   * a);
+    g = (uint8_t)(110 * a);
+    b = (uint8_t)(120 * a);
+  } else {    /* amber ~= 35° HSV */
+    r = (uint8_t)(140 * a);
+    g = (uint8_t)(60  * a);
+    b = (uint8_t)(0);
+  }
+  for (int i = 0; i < LED_COUNT; i++) {
+    led_strip_set_pixel(s_strip, i, r, g, b);
   }
 }
 
@@ -241,6 +271,8 @@ static void led_task(void *arg) {
       render_conn_in(now, atomic_load(&s_conn_in_until_us));
     } else if (now < atomic_load(&s_conn_out_until_us)) {
       render_conn_out(now, atomic_load(&s_conn_out_until_us));
+    } else if (now < atomic_load(&s_output_overlay_until_us)) {
+      render_output_change(now, atomic_load(&s_output_overlay_until_us));
     } else if (!atomic_load(&s_decorative_enabled)) {
       /* Slide is off — keep the ring dark when no utility event is active. */
       for (int i = 0; i < LED_COUNT; i++) {
@@ -338,6 +370,14 @@ void ha_airplay_leds_flash_connection(void) {
 
 void ha_airplay_leds_set_muted(bool muted) {
   atomic_store(&s_muted, muted);
+}
+
+void ha_airplay_leds_show_output_change(bool jack_in) {
+  if (!s_strip) return;
+  atomic_store(&s_output_jack_in, jack_in);
+  atomic_store(&s_output_overlay_until_us,
+               esp_timer_get_time() + 5LL * 1000 * 1000);
+  ESP_LOGI(TAG, "output change: %s", jack_in ? "jack" : "internal speaker");
 }
 
 void ha_airplay_leds_set_decorative_enabled(bool enabled) {
