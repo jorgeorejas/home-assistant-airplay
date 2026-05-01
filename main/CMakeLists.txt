@@ -38,6 +38,7 @@ set( SRC_FILES
     "network/ota.c"
     "network/dns_server.c"
     "network/log_stream.c"
+    "network/now_playing_ws.c"
     "led.c"
     "audio/eq_events.c"
     "audio/audio_eq.c"

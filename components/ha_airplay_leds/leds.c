@@ -29,7 +29,10 @@
 #define LED_GPIO         21
 #define LED_POWER_GPIO   45
 #define LED_COUNT        12
-#define LED_RENDER_HZ    50
+/* 30 Hz is visually indistinguishable from 50 Hz on a 12-pixel ring
+   (perceived flicker threshold is ~25 Hz at this brightness range), but
+   ~40 % fewer wakeups on core 1. Performance review #30. */
+#define LED_RENDER_HZ    30
 #define LED_RENDER_MS    (1000 / LED_RENDER_HZ)
 /* After enabling the VCC rail, wait this long for the LDO to stabilize
  * before we start clocking WS2812 data. Too short → first frame looks

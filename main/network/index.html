@@ -33,6 +33,9 @@ button:hover{background:#1f1f25}
 button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
 button.primary:hover{background:#0066d6}
 button.danger{color:#ff453a}
+button.active{background:rgba(10,132,255,.18);border-color:var(--accent);color:var(--accent)}
+#eq-pill.applied{background:rgba(48,209,88,.18);color:var(--good)}
+#eq-pill.pending{background:rgba(255,159,10,.2);color:#ff9f0a}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(80px);background:var(--card);border:1px solid var(--line);padding:10px 16px;border-radius:9px;opacity:0;transition:all .25s}
 .toast.show{transform:translateX(-50%) translateY(0);opacity:1}
 footer{margin-top:24px;color:var(--dim);font-size:12px;text-align:center}
@@ -93,8 +96,11 @@ footer{margin-top:24px;color:var(--dim);font-size:12px;text-align:center}
 </section>
 
 <section class="card">
-  <h2>Equalizer</h2>
-  <div class="eq-grid" id="eq"></div>
+  <div style="display:flex;align-items:baseline;justify-content:space-between">
+    <h2 style="margin-bottom:0">Equalizer</h2>
+    <span id="eq-pill" class="np pill" style="background:var(--line);color:var(--dim);margin:0">—</span>
+  </div>
+  <div class="eq-grid" id="eq" style="margin-top:14px"></div>
   <div class="presets">
     <button data-preset="flat">Flat</button>
     <button data-preset="loudness">Loudness</button>
@@ -150,7 +156,7 @@ FREQS.forEach((f,i)=>{
   const ftxt=document.createElement('span');ftxt.textContent=fmtFreq(f);
   lbl.appendChild(v);lbl.appendChild(ftxt);
   const s=document.createElement('input');
-  s.type='range';s.min=-15;s.max=15;s.step=1;s.value=0;s.className='slider';s.orient='vertical';
+  s.type='range';s.min=-15;s.max=15;s.step=0.5;s.value=0;s.className='slider';s.orient='vertical';
   s.addEventListener('input',()=>{v.textContent=s.value});
   s.addEventListener('change',commit);
   band.appendChild(s);band.appendChild(lbl);
@@ -158,20 +164,54 @@ FREQS.forEach((f,i)=>{
   sliders.push({s,v});
 });
 
+const eqPill=document.getElementById('eq-pill');
+function updateEqPill(text,cls){
+  eqPill.textContent=text;
+  eqPill.classList.remove('applied','pending');
+  if(cls)eqPill.classList.add(cls);
+}
+function detectPreset(gains){
+  const eps=0.05;
+  for(const name in PRESETS){
+    if(PRESETS[name].every((v,i)=>Math.abs(v-gains[i])<eps))return name;
+  }
+  return null;
+}
+function refreshPresetButtons(gains){
+  const active=detectPreset(gains);
+  document.querySelectorAll('button[data-preset]').forEach(b=>{
+    b.classList.toggle('active',b.dataset.preset===active);
+  });
+  if(active){
+    updateEqPill(active+' preset','applied');
+  }else{
+    updateEqPill('Custom','applied');
+  }
+}
+
 let commitTimer=null;
 function commit(){
   clearTimeout(commitTimer);
+  updateEqPill('Saving…','pending');
   commitTimer=setTimeout(async()=>{
     const gains=sliders.map(x=>parseFloat(x.s.value));
     try{
       const r=await fetch('/api/eq',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({gains})});
-      if(r.ok)toast('EQ saved');
-    }catch(e){toast('Save failed')}
+      if(!r.ok){updateEqPill('Save failed: '+r.status,'pending');return}
+      // Verify with a GET round-trip — pill flips to "Applied" only when
+      // the device confirms it has the new gains.
+      const back=await(await fetch('/api/eq')).json();
+      if(back.success){
+        applyGains(back.gains);
+        refreshPresetButtons(back.gains);
+      }
+    }catch(e){updateEqPill('Save failed','pending')}
   },180);
 }
 
 function applyGains(gains){
   gains.forEach((g,i)=>{sliders[i].s.value=g;sliders[i].v.textContent=g});
+  refreshPresetButtons(gains);
 }
 
 document.querySelectorAll('button[data-preset]').forEach(b=>{
@@ -259,13 +299,33 @@ async function refresh(){
   }catch(e){console.warn(e)}
 }
 
-let lastNpState='idle';
-async function refreshNp(){
+// Push-driven now-playing via /ws/now_playing. Falls back to polling
+// /api/now_playing if the WebSocket can't connect (e.g. handler not
+// registered on an older firmware).
+let npWs=null,npFallbackTimer=null,npRetry=500;
+function startNpFallback(){
+  if(npFallbackTimer)return;
+  npFallbackTimer=setInterval(async()=>{
+    try{const np=await(await fetch('/api/now_playing')).json();renderNp(np)}catch(e){}
+  },2000);
+}
+function stopNpFallback(){if(npFallbackTimer){clearInterval(npFallbackTimer);npFallbackTimer=null}}
+function connectNpWs(){
   try{
-    const np=await(await fetch('/api/now_playing')).json();
-    renderNp(np);
-    lastNpState=np.state;
-  }catch(e){}
+    const url=(location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws/now_playing';
+    npWs=new WebSocket(url);
+  }catch(e){startNpFallback();return}
+  npWs.onopen=()=>{stopNpFallback();npRetry=500};
+  npWs.onmessage=e=>{try{renderNp(JSON.parse(e.data))}catch(_){}};
+  npWs.onclose=()=>{
+    npWs=null;
+    /* Retry with exponential backoff. After two failed attempts fall
+       back to polling — the WS endpoint may not exist on this firmware. */
+    setTimeout(connectNpWs,npRetry);
+    npRetry=Math.min(npRetry*2,8000);
+    if(npRetry>=2000)startNpFallback();
+  };
+  npWs.onerror=()=>{if(npWs)npWs.close()};
 }
 
 document.querySelectorAll('.sleep-btn').forEach(b=>{
@@ -297,10 +357,9 @@ async function refreshSleep(){
 }
 
 refresh();
-refreshNp();
+connectNpWs();
 refreshSleep();
 setInterval(refresh,10000);
-setInterval(refreshNp,2000);
 setInterval(refreshSleep,5000);
 </script>
 </body>

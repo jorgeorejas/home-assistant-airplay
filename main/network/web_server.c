@@ -15,6 +15,7 @@
 #include "ethernet.h"
 #include "ota.h"
 #include "log_stream.h"
+#include "now_playing_ws.h"
 #include "rtsp_server.h"
 #include "esp_app_desc.h"
 #include "freertos/FreeRTOS.h"
@@ -713,7 +714,8 @@ esp_err_t web_server_start(uint16_t port) {
   config.max_open_sockets = 3; // Limit to save lwIP socket slots for AirPlay
 #endif
   config.lru_purge_enable = true; // Reclaim stale sockets when all are in use
-  config.max_uri_handlers = 20;   // Room for captive portal + EQ handlers
+  config.max_uri_handlers = 32;   // captive portal + EQ + now_playing(http+ws)
+                                  // + artwork + sleep_timer + ws/logs + headroom
   config.max_resp_headers = 8;
   config.stack_size = 8192;
 
@@ -838,6 +840,7 @@ esp_err_t web_server_start(uint16_t port) {
   httpd_register_uri_handler(s_server, &eq_post_uri);
 
   log_stream_register(s_server);
+  now_playing_ws_register(s_server);
 
   ESP_LOGI(TAG, "Web server started on port %d with captive portal support",
            port);

@@ -6,6 +6,7 @@
 #include "chime.h"
 #include "esp_ota_ops.h"
 #include "now_playing.h"
+#include "now_playing_ws.h"
 #include "rtsp_events.h"
 #include "sleep_timer.h"
 #include "spiram_task.h"
@@ -78,6 +79,7 @@ static void start_airplay_services(void) {
     chime_init();
     rtsp_events_register(on_chime_event, NULL);
     ESP_ERROR_CHECK(now_playing_init());
+    ESP_ERROR_CHECK(now_playing_ws_init());
     ESP_ERROR_CHECK(sleep_timer_init());
     mdns_airplay_init();
     s_airplay_infrastructure_ready = true;
