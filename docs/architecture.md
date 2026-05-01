@@ -6,7 +6,7 @@ Home Assistant AirPlay is a fork of [rbouteiller/airplay-esp32](https://github.c
 - TI TLV320AIC3204 codec/DAC driver, porting the ESPHome register sequence to native ESP-IDF
 - Hard-coded WiFi credentials at compile time with a two-SSID fallback supervisor
 - Audio-reactive WS2812B LED ring (12 pixels) on GPIO21 with beat detection + artwork-derived base hue
-- Rotary encoder (volume), center button (play/pause + multi-click track control), and mute slide (LED on/off)
+- Rotary encoder (volume), center button (play/pause + multi-click track control), and slide switch that gates decorative LED renders (utility overlays still show)
 
 See `UPSTREAM-README.md` for the airplay-esp32 documentation that still applies to the RTSP/audio stack under `main/`.
 
@@ -111,6 +111,6 @@ Core 0 runs WiFi and the full AirPlay protocol stack. Core 1 runs the audio play
 | Phase | Status   | Scope                                                          |
 |-------|----------|----------------------------------------------------------------|
 | 0     | ✅ GREEN | Viability PoC: AIC3204 audio out, AirPlay discover/stream, heap gate. [phase0-report.md](phase0-report.md) |
-| 1     | ✅       | Encoder volume, button controls, WS2812B ring with beat-pulse + artwork hue, mute slide → LED power. [phase1-report.md](phase1-report.md) |
+| 1     | ✅       | Encoder volume, button controls, WS2812B ring with beat-pulse + artwork hue, slide switch → decorative LED gate. [phase1-report.md](phase1-report.md) |
 | 2     | planned  | Jack-detect auto-switch (GPIO17 → GPIO47), spectrum LED mode, long-press mode cycle |
 | 3     | planned  | OTA polish, boot <8 s, soak test, production artwork cache     |

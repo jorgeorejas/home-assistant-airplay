@@ -1,13 +1,14 @@
 /**
  * @file led_switch.c
- * @brief Hardware mute slide-switch on GPIO3, repurposed in Home Assistant AirPlay as
- *        the master on/off for the 12-LED ring.
+ * @brief Slide-switch on GPIO3 (formerly the Voice PE's mic-mute slider),
+ *        repurposed as the on/off for the 12-LED ring's *decorative*
+ *        animations.
  *
- * Home Assistant AirPlay doesn't use the Voice PE's microphone, so the physical mute
- * slider is free. HIGH level → LEDs powered on. LOW level → LEDs
- * powered off (GPIO45 VCC rail goes LOW). An ISR + small task handles
- * debounce; the initial state is read at boot so the ring reflects the
- * switch's physical position immediately.
+ * Slide LOW → decorative effects (PLAYING beat-pulse, IDLE breath) ON.
+ * Slide HIGH → decorative effects OFF, but utility overlays (mute,
+ * volume bar, connection sweep) still render so the user keeps the
+ * essential feedback. The WS2812B VCC rail is held HIGH for the
+ * lifetime of the device; this slide no longer power-gates the ring.
  */
 
 #include "ui_internal.h"
@@ -35,17 +36,16 @@ static void IRAM_ATTR switch_isr(void *arg) {
 }
 
 static void apply_state(int level) {
-  /* LOW → LEDs on, HIGH → LEDs off. (Slide physically toward the mute
-   * position → ring lights up. Polarity confirmed on bench 2026-04-19.) */
-  ha_airplay_leds_set_power(level == 0);
+  /* LOW → decorative on, HIGH → decorative off. (Slide physically toward
+   * the former mute position → ambient effects light up.) */
+  ha_airplay_leds_set_decorative_enabled(level == 0);
 }
 
 static void switch_task(void *arg) {
   (void)arg;
-  /* Seed current state so the LEDs match the physical slider on boot. */
   int last = gpio_get_level(SWITCH_GPIO);
   apply_state(last);
-  ESP_LOGI(TAG, "mute-slide switch seeded: level=%d → LEDs %s", last,
+  ESP_LOGI(TAG, "slide-switch seeded: level=%d → decorative %s", last,
            (last == 0) ? "ON" : "OFF");
 
   for (;;) {
@@ -54,7 +54,7 @@ static void switch_task(void *arg) {
     int lvl = gpio_get_level(SWITCH_GPIO);
     if (lvl != last) {
       last = lvl;
-      ESP_LOGI(TAG, "mute-slide switch → level=%d → LEDs %s", lvl,
+      ESP_LOGI(TAG, "slide-switch → level=%d → decorative %s", lvl,
                (lvl == 0) ? "ON" : "OFF");
       apply_state(lvl);
     }

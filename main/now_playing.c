@@ -86,10 +86,11 @@ void now_playing_get(now_playing_t *out) {
     memset(out, 0, sizeof(*out));
     return;
   }
+  /* On timeout, leave *out untouched so the caller sees its previous
+     read (or whatever they pre-filled). Better than flickering the UI
+     to "nothing playing" for a 20 ms write contention. */
   if (xSemaphoreTake(s_mutex, pdMS_TO_TICKS(20)) == pdTRUE) {
     memcpy(out, &s_state, sizeof(*out));
     xSemaphoreGive(s_mutex);
-  } else {
-    memset(out, 0, sizeof(*out));
   }
 }

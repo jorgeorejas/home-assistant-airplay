@@ -4,9 +4,9 @@ The 12-pixel WS2812B ring on GPIO21 is the primary visual surface of Home Assist
 
 ## Power
 
-The ring's VCC rail is gated on GPIO45. When the slide on the side of the device (GPIO3) is in the **mute position** (active-low), the rail is driven HIGH and the ring powers up. In the opposite position the ring is dark — regardless of what the firmware *wants* to render. The slide's stock microphone-mute role is repurposed in Home Assistant AirPlay because we don't use the microphone.
+The ring's VCC rail (GPIO45) is driven HIGH at boot and held there for the device's lifetime. The slide switch on GPIO3 — formerly the Voice PE's stock microphone-mute — now toggles a software flag (`s_decorative_enabled`) that gates only the *decorative* renders (PLAYING beat-pulse, IDLE breathing). **Utility overlays — MUTE, VOLUME bar, CONNECTION sweep — render unconditionally regardless of the slide position.** When the slide is in the "off" position and no utility event is active, the render task writes blank pixels.
 
-There's a 15 ms LDO-settle wait after power-on before the first frame is clocked; below that, the first few pixels render corrupted.
+The render task waits 15 ms after the boot-time GPIO45 rise before clocking the first frame, giving the rail's LDO and bypass cap time to settle; below that, the first few pixels render corrupted.
 
 ## States (highest priority first)
 

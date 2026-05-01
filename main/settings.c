@@ -258,6 +258,18 @@ bool settings_has_wifi_credentials(void) {
   return settings_get_wifi_ssid(ssid, sizeof(ssid)) == ESP_OK;
 }
 
+bool settings_has_device_name(void) {
+  nvs_handle_t nvs;
+  esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs);
+  if (err != ESP_OK) {
+    return false;
+  }
+  size_t sz = 0;
+  err = nvs_get_str(nvs, NVS_KEY_DEVICE_NAME, NULL, &sz);
+  nvs_close(nvs);
+  return err == ESP_OK && sz > 1; /* ">1" excludes empty-string entries */
+}
+
 esp_err_t settings_get_device_name(char *name, size_t len) {
   if (!name || len == 0) {
     return ESP_ERR_INVALID_ARG;

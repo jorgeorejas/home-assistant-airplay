@@ -55,7 +55,7 @@ Status: **Phase 1 complete** ([report](docs/phase1-report.md)). Phase 0 viabilit
 │   ├── boards/ha_voice_pe/      ← pin map, I²C bus, WiFi seed + fallback
 │   ├── dac_tlv320aic3204/       ← Home Assistant AirPlay DAC driver (register sequence port)
 │   ├── ha_airplay_leds/             ← WS2812B render loop + audio tap + beat detector
-│   ├── ha_airplay_ui/               ← encoder, button (multi-click), LED on/off slide
+│   ├── ha_airplay_ui/               ← encoder, button (multi-click), decorative-LED slide gate
 │   ├── ha_airplay_artwork/          ← tjpgd artwork decoder → LED base hue
 │   ├── dac/ dac_tas57xx/ …      ← upstream DAC abstraction + siblings
 │   └── boards/ (other) …        ← upstream reference boards

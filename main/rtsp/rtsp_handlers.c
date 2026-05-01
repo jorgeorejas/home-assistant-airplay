@@ -1279,8 +1279,22 @@ static void format_time_mmss(uint32_t seconds, char *out, size_t out_size) {
  *   asgn = genre
  *   asai = album id (64-bit)
  */
+static void parse_dmap_metadata_inner(const uint8_t *data, size_t len,
+                                      rtsp_metadata_t *meta, int depth);
+
 static void parse_dmap_metadata(const uint8_t *data, size_t len,
                                 rtsp_metadata_t *meta) {
+  parse_dmap_metadata_inner(data, len, meta, 0);
+}
+
+static void parse_dmap_metadata_inner(const uint8_t *data, size_t len,
+                                      rtsp_metadata_t *meta, int depth) {
+  /* Cap recursion depth so a hostile SET_PARAMETER body with deeply
+     nested mlit/cmst/mdst containers can't overflow the RTSP task stack. */
+  if (depth > 8) {
+    ESP_LOGW(TAG, "DMAP nesting > 8, refusing to recurse further");
+    return;
+  }
   size_t pos = 0;
 
   while (pos + 8 <= len) {
@@ -1330,8 +1344,8 @@ static void parse_dmap_metadata(const uint8_t *data, size_t len,
       ESP_LOGI(TAG, "  Genre  = %s", meta->genre);
     } else if (strcmp(tag, "mlit") == 0 || strcmp(tag, "cmst") == 0 ||
                strcmp(tag, "mdst") == 0) {
-      // Container tags - recurse into them
-      parse_dmap_metadata(data + pos, item_len, meta);
+      // Container tags - recurse into them (depth-bounded)
+      parse_dmap_metadata_inner(data + pos, item_len, meta, depth + 1);
     }
 
     pos += item_len;

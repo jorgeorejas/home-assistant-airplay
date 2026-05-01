@@ -26,9 +26,12 @@
 #define MAX_CONSECUTIVE_EARLY 750
 // MAX_CONSECUTIVE_LATE: number of consecutive individually-late frames before
 // we conclude the whole buffer is stale and do a bulk flush.  At ~8 ms/frame
-// this is ~24 ms — just enough to distinguish a genuine stale-buffer from a
-// one-off WiFi jitter spike, without the 20-frame drain+log storm.
-#define MAX_CONSECUTIVE_LATE 3
+// this is ~128 ms — comfortably below the 200 ms DEFAULT_BUFFER_LATENCY_US
+// pre-buffer, but tolerant of routine 2.4 GHz WiFi jitter that easily spans
+// 24 ms (the previous 3-frame threshold). The bulk-flush threshold above
+// still catches genuine multi-second drift; this only widens the window for
+// momentary jitter that should not be audible.
+#define MAX_CONSECUTIVE_LATE 16
 
 // POST_FLUSH_STALE_THRESHOLD_US: in post_flush mode the bypass plays frames
 // unconditionally to avoid silence during the phone's pre-buffer window

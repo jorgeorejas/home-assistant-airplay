@@ -16,3 +16,4 @@ typedef struct {
 
 esp_err_t ha_airplay_button_start(const ha_airplay_button_callbacks_t *cbs);
 esp_err_t ha_airplay_led_switch_start(void);
+esp_err_t ha_airplay_jack_detect_start(void);

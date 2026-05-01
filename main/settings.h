@@ -84,6 +84,7 @@ esp_err_t settings_set_wifi_credentials(const char *ssid, const char *password);
  * @return true if credentials exist, false otherwise
  */
 bool settings_has_wifi_credentials(void);
+bool settings_has_device_name(void);
 
 /**
  * Get device name (returns default if none saved)
@@ -100,9 +101,10 @@ esp_err_t settings_get_device_name(char *name, size_t len);
 esp_err_t settings_set_device_name(const char *name);
 
 // ---- EQ settings ----
+#include "audio/audio_eq.h"
 
-/** Number of EQ bands stored in NVS */
-#define SETTINGS_EQ_BANDS 15
+/** Number of EQ bands stored in NVS — single canonical constant. */
+#define SETTINGS_EQ_BANDS AUDIO_EQ_BANDS
 
 /**
  * Get saved EQ gains.

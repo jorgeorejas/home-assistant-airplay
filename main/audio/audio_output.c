@@ -93,6 +93,10 @@ static void playback_task(void *arg) {
                                               MAX_RESAMPLE_FRAMES);
         play_buf = resample_buf;
       }
+      /* If a chime was still in flight, stop it cleanly the moment
+         real audio frames arrive — otherwise it would resume from the
+         middle of the arpeggio after any future silence gap. */
+      chime_stop();
       apply_volume(play_buf, play_samples * 2);
       audio_eq_process(play_buf, play_samples);
       led_audio_feed(play_buf, play_samples);

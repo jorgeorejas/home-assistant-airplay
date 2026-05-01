@@ -48,6 +48,11 @@ void chime_play(void) {
   atomic_store_explicit(&s_active, true, memory_order_release);
 }
 
+void chime_stop(void) {
+  atomic_store_explicit(&s_active, false, memory_order_release);
+  s_pos = 0;
+}
+
 size_t chime_consume(int16_t *out, size_t stereo_frames) {
   if (!atomic_load_explicit(&s_active, memory_order_acquire)) {
     return 0;
@@ -59,7 +64,15 @@ size_t chime_consume(int16_t *out, size_t stereo_frames) {
 
   size_t available = s_total_frames - s_pos;
   size_t to_copy = available < stereo_frames ? available : stereo_frames;
-  memcpy(out, s_samples + s_pos * 2, to_copy * BYTES_PER_FRAME);
+
+  /* Halve every sample (-6 dB) so the chime doesn't sit at full digital
+     scale relative to typical music programme material. The codec's
+     hardware volume register applies on top. Right shift by 1 with
+     rounding-to-zero is fine for chime quality. */
+  const int16_t *src = s_samples + s_pos * 2;
+  for (size_t i = 0; i < to_copy * 2; i++) {
+    out[i] = (int16_t)(src[i] >> 1);
+  }
   s_pos += to_copy;
 
   if (s_pos >= s_total_frames) {

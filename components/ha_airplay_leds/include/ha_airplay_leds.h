@@ -30,12 +30,18 @@ typedef enum {
 esp_err_t ha_airplay_leds_init(void);
 
 /**
- * Master LED power. Drives GPIO45 (the WS2812B VCC rail) and gates the
- * render-task's strip refresh. Used by the mute-slide-switch repurpose
- * on HA Voice PE: flipping the physical slide → turning the ring off.
+ * Decorative-renders gate. When disabled, the render task skips PLAYING
+ * and IDLE animations and writes blank pixels instead — but utility
+ * overlays (MUTE, VOLUME, CONN_IN, CONN_OUT) still render normally so
+ * the user keeps essential feedback. Used by the slide-switch on Voice
+ * PE: flipping the physical slide → silence the ambient/idle effects
+ * without losing the volume dial.
+ *
+ * The WS2812B VCC rail (GPIO45) is held HIGH for the lifetime of the
+ * device after init; the rail is no longer power-gated by this flag.
  */
-void ha_airplay_leds_set_power(bool on);
-bool ha_airplay_leds_is_powered(void);
+void ha_airplay_leds_set_decorative_enabled(bool enabled);
+bool ha_airplay_leds_decorative_is_enabled(void);
 
 /** Set the base playback state that drives the PLAYING / IDLE visuals. */
 void ha_airplay_leds_set_playback_state(ha_airplay_playback_state_t state);
@@ -49,6 +55,16 @@ void ha_airplay_leds_flash_connection(void);
 
 /** Muted indicator overrides everything else until cleared. */
 void ha_airplay_leds_set_muted(bool muted);
+
+/**
+ * 5 s output-destination overlay shown when the 3.5 mm jack is inserted
+ * or removed. Cyan ring = audio routed to jack; amber ring = audio
+ * routed to internal speaker. Renders in the utility-overlay slot so it
+ * shows even with the slide in decorative-off position.
+ *
+ * @param jack_in true if the jack just got plugged in, false on removal
+ */
+void ha_airplay_leds_show_output_change(bool jack_in);
 
 /**
  * Override the PLAYING-mode base hue with a value derived from album

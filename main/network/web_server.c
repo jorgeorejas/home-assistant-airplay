@@ -21,6 +21,7 @@
 #include "freertos/task.h"
 
 #include "eq_events.h"
+#include "ha_airplay_artwork.h"
 #include "now_playing.h"
 
 static const char *TAG = "web_server";
@@ -81,6 +82,7 @@ static esp_err_t logs_page_handler(httpd_req_t *req) {
 
 static esp_err_t now_playing_handler(httpd_req_t *req) {
   now_playing_t np;
+  memset(&np, 0, sizeof(np));
   now_playing_get(&np);
 
   cJSON *json = cJSON_CreateObject();
@@ -99,6 +101,10 @@ static esp_err_t now_playing_handler(httpd_req_t *req) {
   cJSON_AddNumberToObject(json, "duration_secs", np.duration_secs);
   cJSON_AddNumberToObject(json, "position_secs", np.position_secs);
   cJSON_AddBoolToObject(json, "has_artwork", np.has_artwork);
+  /* Surface the artwork etag so the homepage can refresh the <img>
+     only when it actually changes. */
+  cJSON_AddNumberToObject(json, "artwork_etag",
+                          (double)ha_airplay_artwork_etag());
   cJSON_AddBoolToObject(json, "success", true);
 
   char *json_str = cJSON_Print(json);
@@ -107,6 +113,42 @@ static esp_err_t now_playing_handler(httpd_req_t *req) {
   free(json_str);
   cJSON_Delete(json);
   return ESP_OK;
+}
+
+static esp_err_t artwork_handler(httpd_req_t *req) {
+  /* Conditional GET: if the client knows the current etag, return 304. */
+  uint32_t etag = ha_airplay_artwork_etag();
+  if (etag == 0) {
+    httpd_resp_set_status(req, "404 Not Found");
+    httpd_resp_send(req, NULL, 0);
+    return ESP_OK;
+  }
+  char etag_hdr[24];
+  snprintf(etag_hdr, sizeof(etag_hdr), "\"%08x\"", (unsigned)etag);
+
+  char inm[24] = {0};
+  if (httpd_req_get_hdr_value_str(req, "If-None-Match", inm, sizeof(inm) - 1)
+      == ESP_OK && strcmp(inm, etag_hdr) == 0) {
+    httpd_resp_set_status(req, "304 Not Modified");
+    httpd_resp_set_hdr(req, "ETag", etag_hdr);
+    httpd_resp_send(req, NULL, 0);
+    return ESP_OK;
+  }
+
+  const uint8_t *bytes = NULL;
+  size_t len = 0;
+  esp_err_t err = ha_airplay_artwork_lock(&bytes, &len, &etag);
+  if (err != ESP_OK) {
+    httpd_resp_set_status(req, "404 Not Found");
+    httpd_resp_send(req, NULL, 0);
+    return ESP_OK;
+  }
+  httpd_resp_set_type(req, "image/jpeg");
+  httpd_resp_set_hdr(req, "ETag", etag_hdr);
+  httpd_resp_set_hdr(req, "Cache-Control", "max-age=0, must-revalidate");
+  esp_err_t send_err = httpd_resp_send(req, (const char *)bytes, len);
+  ha_airplay_artwork_unlock();
+  return send_err;
 }
 
 // Captive portal detection handlers
@@ -671,6 +713,11 @@ esp_err_t web_server_start(uint16_t port) {
                                  .method = HTTP_GET,
                                  .handler = now_playing_handler};
   httpd_register_uri_handler(s_server, &now_playing_uri);
+
+  httpd_uri_t artwork_uri = {.uri = "/api/artwork.jpg",
+                             .method = HTTP_GET,
+                             .handler = artwork_handler};
+  httpd_register_uri_handler(s_server, &artwork_uri);
 
   httpd_uri_t system_restart_uri = {.uri = "/api/system/restart",
                                     .method = HTTP_POST,

@@ -18,9 +18,11 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 
 #include <math.h>
+#include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -48,6 +50,32 @@ typedef struct {
 
 static QueueHandle_t s_queue = NULL;
 static TaskHandle_t  s_task  = NULL;
+
+/* Persistent decode pool — allocated once at init so the JPEG decoder
+   doesn't churn ~3 KB of internal heap on every track change. tjpgd
+   accesses this strictly sequentially so the small extra latency from
+   moving it to PSRAM would also be acceptable, but internal SRAM is
+   cheaper here than the bookkeeping. */
+static void *s_decode_pool = NULL;
+
+/* Latest JPEG cache, for serving via /api/artwork.jpg. PSRAM-allocated.
+   The mutex protects the pointer/length pair across swaps; readers
+   hold it while copying or streaming the bytes. */
+static SemaphoreHandle_t s_latest_mutex = NULL;
+static uint8_t *s_latest_bytes = NULL;
+static size_t s_latest_len = 0;
+static atomic_uint_fast32_t s_latest_etag = 0;
+
+/* FNV-1a 32-bit — cheap content-derived ETag. */
+static uint32_t fnv1a_32(const uint8_t *data, size_t len) {
+  uint32_t h = 0x811C9DC5u;
+  for (size_t i = 0; i < len; i++) {
+    h ^= data[i];
+    h *= 0x01000193u;
+  }
+  if (h == 0) h = 1;
+  return h;
+}
 
 /* ---------- tjpgd callbacks ---------- */
 
@@ -107,18 +135,16 @@ static void rgb_to_hsv(float r, float g, float b,
 /* ---------- Decode one job ---------- */
 
 static bool decode_and_publish(uint8_t *bytes, size_t len) {
-  void *pool = heap_caps_malloc(TJPGD_POOL_BYTES, MALLOC_CAP_INTERNAL);
-  if (!pool) {
-    ESP_LOGW(TAG, "decode pool alloc failed");
+  if (!s_decode_pool) {
+    ESP_LOGW(TAG, "decode pool not initialized");
     return false;
   }
 
   ctx_t c = { .bytes = bytes, .offset = 0, .total = len };
   JDEC jdec;
-  JRESULT err = jd_prepare(&jdec, tjd_input, pool, TJPGD_POOL_BYTES, &c);
+  JRESULT err = jd_prepare(&jdec, tjd_input, s_decode_pool, TJPGD_POOL_BYTES, &c);
   if (err != JDR_OK) {
     ESP_LOGW(TAG, "jd_prepare failed: %d", err);
-    free(pool);
     return false;
   }
 
@@ -126,7 +152,6 @@ static bool decode_and_publish(uint8_t *bytes, size_t len) {
            jdec.width, jdec.height, 1 << DECODE_SCALE, (unsigned)len);
 
   err = jd_decomp(&jdec, tjd_output, DECODE_SCALE);
-  free(pool);
   if (err != JDR_OK) {
     ESP_LOGW(TAG, "jd_decomp failed: %d", err);
     return false;
@@ -153,6 +178,23 @@ static bool decode_and_publish(uint8_t *bytes, size_t len) {
   return true;
 }
 
+/* Take ownership of `bytes`/`len` and stash them as the latest cached
+   JPEG so the web layer can serve /api/artwork.jpg. Frees the previous
+   cached buffer. Caller must NOT free `bytes` after this returns true. */
+static bool retain_latest(uint8_t *bytes, size_t len) {
+  if (!s_latest_mutex) return false;
+  uint32_t etag = fnv1a_32(bytes, len);
+  if (xSemaphoreTake(s_latest_mutex, pdMS_TO_TICKS(50)) != pdTRUE) {
+    return false;
+  }
+  free(s_latest_bytes);
+  s_latest_bytes = bytes;
+  s_latest_len = len;
+  atomic_store(&s_latest_etag, etag);
+  xSemaphoreGive(s_latest_mutex);
+  return true;
+}
+
 /* ---------- Task ---------- */
 
 static void artwork_task(void *arg) {
@@ -161,8 +203,12 @@ static void artwork_task(void *arg) {
     artwork_job_t job;
     if (xQueueReceive(s_queue, &job, portMAX_DELAY) == pdTRUE) {
       if (job.bytes && job.len > 0) {
-        (void)decode_and_publish(job.bytes, job.len);
-        free(job.bytes);
+        bool decoded = decode_and_publish(job.bytes, job.len);
+        if (decoded && retain_latest(job.bytes, job.len)) {
+          /* Ownership transferred to the latest-cache; do not free. */
+        } else {
+          free(job.bytes);
+        }
       }
     }
   }
@@ -172,6 +218,20 @@ static void artwork_task(void *arg) {
 
 esp_err_t ha_airplay_artwork_init(void) {
   if (s_queue) return ESP_OK;
+
+  s_decode_pool = heap_caps_malloc(TJPGD_POOL_BYTES, MALLOC_CAP_INTERNAL);
+  if (!s_decode_pool) {
+    ESP_LOGE(TAG, "decode pool alloc failed");
+    return ESP_ERR_NO_MEM;
+  }
+
+  s_latest_mutex = xSemaphoreCreateMutex();
+  if (!s_latest_mutex) {
+    free(s_decode_pool);
+    s_decode_pool = NULL;
+    return ESP_ERR_NO_MEM;
+  }
+
   s_queue = xQueueCreate(ARTWORK_QUEUE_LEN, sizeof(artwork_job_t));
   if (!s_queue) return ESP_ERR_NO_MEM;
   BaseType_t ok = xTaskCreatePinnedToCore(artwork_task, "ha_airplay_art", 4096,
@@ -183,6 +243,32 @@ esp_err_t ha_airplay_artwork_init(void) {
   }
   ESP_LOGI(TAG, "artwork decoder ready");
   return ESP_OK;
+}
+
+esp_err_t ha_airplay_artwork_lock(const uint8_t **out_bytes, size_t *out_len,
+                                  uint32_t *out_etag) {
+  if (!s_latest_mutex) return ESP_ERR_INVALID_STATE;
+  if (xSemaphoreTake(s_latest_mutex, pdMS_TO_TICKS(50)) != pdTRUE) {
+    return ESP_ERR_TIMEOUT;
+  }
+  if (!s_latest_bytes || s_latest_len == 0) {
+    xSemaphoreGive(s_latest_mutex);
+    return ESP_ERR_NOT_FOUND;
+  }
+  if (out_bytes) *out_bytes = s_latest_bytes;
+  if (out_len) *out_len = s_latest_len;
+  if (out_etag) *out_etag = atomic_load(&s_latest_etag);
+  return ESP_OK;
+}
+
+void ha_airplay_artwork_unlock(void) {
+  if (s_latest_mutex) {
+    xSemaphoreGive(s_latest_mutex);
+  }
+}
+
+uint32_t ha_airplay_artwork_etag(void) {
+  return atomic_load(&s_latest_etag);
 }
 
 void ha_airplay_artwork_update(const uint8_t *bytes, size_t len,
