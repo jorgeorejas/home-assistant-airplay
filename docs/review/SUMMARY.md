@@ -48,17 +48,17 @@ Items below are annotated with their post-`v0.5.0` status.
 
 | # | Status | Finding | Source | Effort |
 |---|:--:|---|---|---|
-| 19 | 🛠 partial | **`main/hap/` namespace is HomeKit-shaped but holds AirPlay 2 transient pairing.** Was renamed to `main/airplay_pair/` on the `feat/homekit` branch; reverted when HomeKit was dropped. The naming clarity ask remains — could redo as a standalone change. | architecture #1 | M |
-| 20 | 📅 | **Dead upstream code** in Voice PE binary (`main/led.c`, `main/buttons.c`). | architecture #7/#8 | S |
-| 21 | 📅 | **DMA: 8×512 dominates 16×256.** Same 93 ms buffer, half the ISR rate. We shipped 16×256 in 0.5.0; refinement opportunity. | performance HIGH | S |
+| 19 | ✅ | **`main/hap/` namespace is HomeKit-shaped but holds AirPlay 2 transient pairing.** Renamed to `main/airplay_pair/` (public header `airplay_pair.h`) in v0.6.0. | architecture #1 | M |
+| 20 | ⏸ | **Dead upstream code** in Voice PE binary (`main/led.c`, `main/buttons.c`). Decided to keep — call sites in `main.c`/`audio_output.c`/`a2dp_sink.c` reference them and the no-op cost is sub-µs / frame, ~5 KB flash. Documented in `main/CMakeLists.txt`. | architecture #7/#8 | S |
+| 21 | ✅ | **DMA: 8×512** shipped in v0.6.0 — same 93 ms buffer, half the ISR rate. | performance HIGH | S |
 | 22 | 📅 | **EQ commit feedback loop** polish (sub-dB step, active-preset highlight, applied confirmation). | ux L3 | M |
-| 23 | 📅 | **Volume curve non-linear** (3 dB/click below -18 dB, 1.5 dB above). | ux L8 | S |
-| 24 | 📅 | **Slide-switch state in dashboard** + 1 s ring confirmation on toggle. | ux L6 | S |
-| 25 | 📅 | **Track-change ring sweep** on `RTSP_EVENT_METADATA`. | ux delight | S |
-| 26 | 📅 | **Sleep timer** card on dashboard. | ux delight | S |
-| 27 | 📅 | **Don't tear down AP after STA gets IP.** Keep APSTA so the captive portal stays reachable. | reliability P1 | S |
-| 28 | 📅 | **`gpio_install_isr_service(0)` → `ESP_INTR_FLAG_IRAM`** so ISR dispatch survives flash writes. | reliability P2 | S |
-| 29 | 📅 | **`dac_tas58xx` unconditional dep** of main on Voice PE. | architecture #4 | S |
+| 23 | ✅ | **Volume curve non-linear** — 3 dB below -18 dB, 1.5 dB above. v0.6.0. | ux L8 | S |
+| 24 | ✅ | **Slide-switch state on dashboard** — `decorative_leds` field in `/api/system/info`, surfaced as a Status row. v0.7.0. | ux L6 | S |
+| 25 | ✅ | **Track-change ring sweep** — 1.5 s rotating shimmer in artwork hue on `RTSP_EVENT_METADATA` (with title de-bounce). v0.7.0. | ux delight | S |
+| 26 | ✅ | **Sleep timer** card on dashboard (15 / 30 / 60 / 120 min + Cancel) with 60 s fade-out. v0.7.0. | ux delight | S |
+| 27 | ✅ | **Don't tear down AP after STA gets IP** — APSTA stays up for the lifetime of the device. v0.6.0. | reliability P1 | S |
+| 28 | ✅ | **`gpio_install_isr_service(ESP_INTR_FLAG_IRAM)`** in all four ha_airplay_ui ISR sites. v0.6.0. | reliability P2 | S |
+| 29 | ✅ | **`dac_tas58xx` is now a conditional dep** gated on `CONFIG_DAC_TAS58XX`. v0.6.0. | architecture #4 | S |
 | 30 | 📅 | **LED render 50 → 30 Hz.** | performance MEDIUM | S |
 
 ## What's healthy (don't touch)
@@ -76,13 +76,49 @@ Items below are annotated with their post-`v0.5.0` status.
 
 ## Execution log (post-review)
 
-The review's suggested batching was followed. Outcomes:
+The review's suggested batching was followed, then expanded with two
+follow-up sprints (E, F) covering the cleanup + delight tier.
 
-- **Sprint A — bug-fix OTA** (~half a day): ✅ shipped — items **1, 2, 3, 5, 6, 7**.
-- **Sprint B — feel polish OTA** (~one day): ✅ partially shipped — items **8, 12, 13**. Item **9** (push-driven now-playing) deferred; 2 s polling deemed acceptable.
-- **Sprint C — Phase 2 jack-detect** (~one day): ✅ shipped — item **11** with the 5 s output-destination LED overlay.
-- **Sprint D — security tighten + name UI** (~half a day): 🛠 partial — item **14** shipped; items **17** and **18** deferred per the user's "security low priority" note (residential threat model, accepted risks).
+- **Sprint A — bug-fix OTA**: ✅ shipped — items **1, 2, 3, 5, 6, 7**.
+- **Sprint B — feel polish OTA**: ✅ partially shipped — items **8, 12, 13**.
+- **Sprint C — Phase 2 jack-detect**: ✅ shipped — item **11** with the
+  5 s output-destination LED overlay.
+- **Sprint D — security tighten + name UI**: 🛠 partial — item **14**
+  shipped; items **17, 18** deferred per the user's "security low
+  priority" note.
+- **Sprint E — architecture cleanup + reliability polish** (v0.6.0): ✅
+  shipped — items **19, 21, 23, 27, 28, 29**.
+- **Sprint F — UX delight** (v0.7.0): ✅ shipped — items **24, 25, 26**.
 
-A short HomeKit experiment ran on a `feat/homekit` branch (not part of the review backlog) — added `espressif/esp-homekit-sdk` as a submodule and exposed a Smart Speaker accessory. Pairing flow worked but AirPlay's RTSP/UDP socket usage collided with HAP's HTTP server reservation. Reverted; recommended path for HomeKit integration is HA's HomeKit Bridge.
+A short HomeKit experiment ran on a `feat/homekit` branch (not part of
+the review backlog) — added `espressif/esp-homekit-sdk` as a submodule
+and exposed a Smart Speaker accessory. Pairing flow worked but
+AirPlay's RTSP/UDP socket usage collided with HAP's HTTP server
+reservation. Reverted; recommended path for HomeKit integration is HA's
+HomeKit Bridge.
 
-What remains in this file is a backlog. None of it blocks anything; pick items off as motivation strikes.
+## Remaining backlog
+
+After Sprints A–F, what's still open:
+
+- **#9 push-driven `/ws/now_playing`** — 2 s polling works fine; would
+  eliminate UI lag but isn't a real pain point.
+- **#10 PSRAM stacks experiment** — hypothesis for recovering 10–20 KB
+  of internal heap; needs benchmarking + risk testing.
+- **#15 boot-time DAC ramp parallelization** — would shave ~2 s off
+  the ~17 s boot. Touches startup ordering.
+- **#17 OTA token gate / #18 PSK rotation** — security; user-accepted
+  risk for the residential threat model.
+- **#20 dead upstream code (`led.c`/`buttons.c`)** — kept on purpose;
+  the no-op cost is below the call-site disruption.
+- **#22 EQ commit feedback polish** — sub-dB slider step, active-preset
+  highlight, applied confirmation pill.
+- **#30 LED render 50 → 30 Hz** — minor wakeup-rate refinement.
+
+Phase 2 PRD remainder (separate from the review backlog):
+
+- Spectrum LED mode (256-pt FFT via ESP-DSP, 12 log bands)
+- Long-press LED mode cycle
+- Persistent LED mode in NVS
+
+None of the open items block anything; pick from the list as motivation strikes.

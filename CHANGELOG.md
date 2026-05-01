@@ -7,13 +7,80 @@ phase from the PRD (0 = viability, 1 = stable audio + controls, 2 = Phase 2
 features, etc.).
 
 Tags:
+- `v0.7.0` — Sprint F (UX delight: sleep timer, track-change ring sweep, slide state)
+- `v0.6.0` — Sprint E (architecture cleanup: hap → airplay_pair, conditional deps, ISR IRAM, AP+STA forever, non-linear volume, DMA refinement)
 - `v0.5.0` — Sprint A–D follow-ups + Phase 2 jack-detect
 - `v0.2.0-phase1` — Phase 1 complete
 - `v0.1.0-phase0` — Phase 0 viability gate GREEN
 
 ## [Unreleased]
 
-_(no entries — `feat/homekit` was an experimental branch that is now reverted; see notes under 0.5.0)_
+_(no entries)_
+
+## [0.7.0] — 2026-05-01
+
+UX delight pass — three review backlog items shipped on top of 0.6.0.
+
+### Added
+- **Sleep timer.** New `main/sleep_timer.c` with one-shot
+  `esp_timer`-based scheduler. POST `/api/sleep_timer {"minutes":N}`
+  arms it; the dashboard adds a card with 15 / 30 / 60 / 120 minute
+  presets and Cancel. Last 60 s smoothly fade digital volume from
+  current to -30 dB; at T=0 the codec drops to STANDBY. Pre-timer
+  volume is captured and persisted so the next encoder turn / unmute
+  restores it. Cancel-mid-fade restores volume immediately.
+- **Track-change ring sweep.** New
+  `ha_airplay_leds_show_track_change()` — 1.5 s rotating shimmer in
+  the artwork hue (two pixels lead, dim base of the same hue) on every
+  new RTSP_EVENT_METADATA title. De-bounced in `ha_airplay_ui/ui.c` so
+  progress-update metadata pings don't retrigger. Decorative-only —
+  gated off when the slide is off.
+- **`decorative_leds`** field in `/api/system/info` mirrors the slide
+  state. Dashboard surfaces it as a Status row that reads `on` or
+  `off (slide off)`.
+
+### Changed
+- `version.txt` → 0.7.0.
+
+## [0.6.0] — 2026-05-01
+
+Architecture and reliability cleanup pass — Sprint E from
+`docs/review/SUMMARY.md`. No user-visible feature changes; two
+behavior refinements you'll feel (smoother volume curve, halved I²S
+ISR cadence).
+
+### Changed
+- **`main/hap/` → `main/airplay_pair/`** with public header renamed
+  `hap.h` → `airplay_pair.h` (architecture review #1). The directory
+  contained AirPlay 2 transient-pairing crypto, never HomeKit;
+  rename eliminates the misleading namespace. Internal `hap_*` symbols
+  kept (no cross-component conflict). Cross-component callers in
+  `main.c`, `network/mdns_airplay.c`, `rtsp_conn.h`, `rtsp_handlers.c`
+  updated to `#include "airplay_pair.h"`.
+- **Non-linear volume curve.** 3 dB/click below the -18 dB knee,
+  1.5 dB above. From a comfortable -12 dB a single click is now ~20 %
+  SPL instead of ~40 %. UX review L8.
+- **I²S DMA: 16×256 → 8×512.** Same 93 ms buffer, half the
+  DMA-completion ISR rate. Performance review HIGH.
+- **WiFi: keep AP+STA forever.** No longer tear down the AP netif on
+  `IP_EVENT_STA_GOT_IP`. Cost: ~20 KB lwIP state and one extra SSID
+  broadcast. Win: captive portal stays reachable if creds go stale.
+  Reliability review P1.
+- **`gpio_install_isr_service(ESP_INTR_FLAG_IRAM)`** in all four
+  `ha_airplay_ui` ISR sites (button, encoder, led_switch,
+  jack_detect). Encoder ticks no longer lost during NVS commits or
+  OTA flash writes. Reliability review P2.
+- **`dac_tas58xx` is now a conditional dep** of `main` gated on
+  `CONFIG_DAC_TAS58XX`. Voice PE no longer pulls in a chip family it
+  never uses. Architecture review #4.
+- `version.txt` → 0.6.0.
+
+### Notes
+- Architecture review #7/#8 (drop dead `led.c`/`buttons.c` on Voice PE)
+  was deliberately not applied. Call sites in `main.c`/`audio_output.c`/
+  `a2dp_sink.c` reference the symbols, so the no-op pattern (every
+  CONFIG_*_GPIO=-1 → early return) is the cheaper option than gating
+  out + stubbing all the call sites. Documented in `main/CMakeLists.txt`.
 
 ## [0.5.0] — 2026-05-01
 

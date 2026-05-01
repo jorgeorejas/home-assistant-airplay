@@ -99,7 +99,9 @@ Target: **[Home Assistant Voice Preview Edition](https://www.home-assistant.io/v
 - Stock (ESPHome) firmware source: https://github.com/esphome/home-assistant-voice-pe
 - Reinstall the stock firmware: https://esphome.github.io/home-assistant-voice-pe/
 
-## Documentation index
+## Documentation
+
+Start at [`docs/README.md`](docs/README.md) — it's an index organised by audience (understand the system / build & run / what shipped when / pick something to fix).
 
 | File | Topic |
 |---|---|
