@@ -43,6 +43,7 @@ set( SRC_FILES
     "audio/audio_eq.c"
     "audio/chime.c"
     "now_playing.c"
+    "sleep_timer.c"
     "buttons.c"
     "playback_control.c"
     "dacp_client.c"

@@ -53,6 +53,7 @@ static _Atomic int64_t s_conn_in_until_us = 0;
 static _Atomic int64_t s_conn_out_until_us = 0;
 static _Atomic int64_t s_output_overlay_until_us = 0;
 static _Atomic bool s_output_jack_in = false;
+static _Atomic int64_t s_track_overlay_until_us = 0;
 static _Atomic bool s_muted = false;
 
 /* GPIO45 (WS2812B VCC rail) is driven HIGH at init and stays on. The
@@ -110,6 +111,37 @@ static void render_muted(void) {
       led_strip_set_pixel(s_strip, i, 60, 0, 0);
     } else {
       led_strip_set_pixel(s_strip, i, 0, 0, 0);
+    }
+  }
+}
+
+static void render_track_change(int64_t now_us, int64_t until_us) {
+  /* 1.5 s rotating shimmer in the artwork hue. Two pixels travel around
+     the ring (~1 revolution / 0.5 s) on top of a dim base in the same
+     hue. Soft fade-in/out so the transition between artwork hues feels
+     deliberate. */
+  float remaining_s = (float)(until_us - now_us) / 1e6f;
+  float total_s = 1.5f;
+  float elapsed_s = total_s - remaining_s;
+  float fade_in  = elapsed_s < 0.2f ? elapsed_s / 0.2f : 1.0f;
+  float fade_out = remaining_s < 0.4f ? remaining_s / 0.4f : 1.0f;
+  float a = fade_in < fade_out ? fade_in : fade_out;
+  if (a < 0) a = 0;
+
+  float hue = (float)atomic_load(&s_base_hue_centideg) / 100.0f;
+  uint8_t br, bg, bb, hr, hg, hb;
+  hsv_to_rgb(hue, 1.0f, 0.18f * a, &br, &bg, &bb);  /* dim base */
+  hsv_to_rgb(hue, 0.7f, 0.85f * a, &hr, &hg, &hb);  /* lead pixel */
+
+  int lead = ((int)(elapsed_s * LED_COUNT * 2.0f)) % LED_COUNT;
+  if (lead < 0) lead += LED_COUNT;
+
+  for (int i = 0; i < LED_COUNT; i++) {
+    int dist = (i - lead + LED_COUNT) % LED_COUNT;
+    if (dist == 0 || dist == 1) {
+      led_strip_set_pixel(s_strip, i, hr, hg, hb);
+    } else {
+      led_strip_set_pixel(s_strip, i, br, bg, bb);
     }
   }
 }
@@ -278,6 +310,8 @@ static void led_task(void *arg) {
       for (int i = 0; i < LED_COUNT; i++) {
         led_strip_set_pixel(s_strip, i, 0, 0, 0);
       }
+    } else if (now < atomic_load(&s_track_overlay_until_us)) {
+      render_track_change(now, atomic_load(&s_track_overlay_until_us));
     } else {
       int state = atomic_load(&s_playback_state);
       if (state == HA_AIRPLAY_PLAYBACK_PLAYING) {
@@ -378,6 +412,12 @@ void ha_airplay_leds_show_output_change(bool jack_in) {
   atomic_store(&s_output_overlay_until_us,
                esp_timer_get_time() + 5LL * 1000 * 1000);
   ESP_LOGI(TAG, "output change: %s", jack_in ? "jack" : "internal speaker");
+}
+
+void ha_airplay_leds_show_track_change(void) {
+  if (!s_strip) return;
+  atomic_store(&s_track_overlay_until_us,
+               esp_timer_get_time() + 1500LL * 1000);
 }
 
 void ha_airplay_leds_set_decorative_enabled(bool enabled) {

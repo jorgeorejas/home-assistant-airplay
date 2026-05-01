@@ -73,6 +73,23 @@ footer{margin-top:24px;color:var(--dim);font-size:12px;text-align:center}
   <div class="row"><b>MAC</b><span id="mac">—</span></div>
   <div class="row"><b>Firmware</b><span id="fw">—</span></div>
   <div class="row"><b>Free heap</b><span id="heap">—</span></div>
+  <div class="row"><b>Decorative LEDs</b><span id="leds">—</span></div>
+</section>
+
+<section class="card">
+  <h2>Sleep timer</h2>
+  <div class="row" style="border:0;padding:6px 0">
+    <b id="sleep-state">Off</b>
+    <span id="sleep-remaining" style="color:var(--dim);font-variant-numeric:tabular-nums"></span>
+  </div>
+  <div class="presets">
+    <button class="sleep-btn" data-min="15">15 min</button>
+    <button class="sleep-btn" data-min="30">30 min</button>
+    <button class="sleep-btn" data-min="60">60 min</button>
+    <button class="sleep-btn" data-min="120">2 h</button>
+    <button id="sleep-cancel" class="danger">Cancel</button>
+  </div>
+  <div class="sub" style="font-size:12px;margin-top:6px">Volume fades to silent over the last 60 s, then mutes the codec.</div>
 </section>
 
 <section class="card">
@@ -229,6 +246,8 @@ async function refresh(){
       document.getElementById('mac').textContent=i.mac;
       document.getElementById('fw').textContent=i.firmware_version;
       document.getElementById('heap').textContent=fmtHeap(i.free_heap);
+      document.getElementById('leds').textContent=
+        i.decorative_leds===false?'off (slide off)':'on';
       const inp=document.getElementById('name-input');
       if(inp&&document.activeElement!==inp)inp.value=name;
       const hh=document.getElementById('hostname-hint');
@@ -249,10 +268,40 @@ async function refreshNp(){
   }catch(e){}
 }
 
+document.querySelectorAll('.sleep-btn').forEach(b=>{
+  b.addEventListener('click',async()=>{
+    const m=parseInt(b.dataset.min,10);
+    try{
+      const r=await fetch('/api/sleep_timer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({minutes:m})});
+      if(r.ok){toast('Sleep in '+m+' min');refreshSleep();}
+      else toast('Failed');
+    }catch(e){toast('Failed')}
+  });
+});
+document.getElementById('sleep-cancel').addEventListener('click',async()=>{
+  await fetch('/api/sleep_timer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({minutes:0})});
+  toast('Canceled');refreshSleep();
+});
+
+async function refreshSleep(){
+  try{
+    const s=await(await fetch('/api/sleep_timer')).json();
+    if(s.success&&s.active){
+      document.getElementById('sleep-state').textContent=s.fading?'Fading out…':'Armed';
+      document.getElementById('sleep-remaining').textContent=s.minutes_remaining+' min remaining';
+    }else{
+      document.getElementById('sleep-state').textContent='Off';
+      document.getElementById('sleep-remaining').textContent='';
+    }
+  }catch(e){}
+}
+
 refresh();
 refreshNp();
+refreshSleep();
 setInterval(refresh,10000);
 setInterval(refreshNp,2000);
+setInterval(refreshSleep,5000);
 </script>
 </body>
 </html>

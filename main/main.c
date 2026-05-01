@@ -7,6 +7,7 @@
 #include "esp_ota_ops.h"
 #include "now_playing.h"
 #include "rtsp_events.h"
+#include "sleep_timer.h"
 #include "spiram_task.h"
 #include "display.h"
 #include "dns_server.h"
@@ -77,6 +78,7 @@ static void start_airplay_services(void) {
     chime_init();
     rtsp_events_register(on_chime_event, NULL);
     ESP_ERROR_CHECK(now_playing_init());
+    ESP_ERROR_CHECK(sleep_timer_init());
     mdns_airplay_init();
     s_airplay_infrastructure_ready = true;
   }

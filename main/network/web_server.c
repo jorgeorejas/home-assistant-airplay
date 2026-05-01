@@ -22,7 +22,9 @@
 
 #include "eq_events.h"
 #include "ha_airplay_artwork.h"
+#include "ha_airplay_leds.h"
 #include "now_playing.h"
+#include "sleep_timer.h"
 
 static const char *TAG = "web_server";
 static httpd_handle_t s_server = NULL;
@@ -113,6 +115,54 @@ static esp_err_t now_playing_handler(httpd_req_t *req) {
   free(json_str);
   cJSON_Delete(json);
   return ESP_OK;
+}
+
+static esp_err_t sleep_timer_get_handler(httpd_req_t *req) {
+  sleep_timer_state_t st;
+  sleep_timer_get(&st);
+  cJSON *json = cJSON_CreateObject();
+  cJSON_AddBoolToObject(json, "active", st.active);
+  cJSON_AddNumberToObject(json, "minutes_remaining", st.minutes_remaining);
+  cJSON_AddBoolToObject(json, "fading", st.fading);
+  cJSON_AddBoolToObject(json, "success", true);
+  char *json_str = cJSON_Print(json);
+  httpd_resp_set_type(req, "application/json");
+  httpd_resp_send(req, json_str, HTTPD_RESP_USE_STRLEN);
+  free(json_str);
+  cJSON_Delete(json);
+  return ESP_OK;
+}
+
+static esp_err_t sleep_timer_post_handler(httpd_req_t *req) {
+  char body[64];
+  int n = httpd_req_recv(req, body, sizeof(body) - 1);
+  if (n <= 0) {
+    httpd_resp_send_500(req);
+    return ESP_FAIL;
+  }
+  body[n] = '\0';
+  cJSON *json = cJSON_Parse(body);
+  if (!json) {
+    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+    return ESP_FAIL;
+  }
+  cJSON *m = cJSON_GetObjectItem(json, "minutes");
+  int minutes = (m && cJSON_IsNumber(m)) ? (int)m->valuedouble : 0;
+  cJSON_Delete(json);
+  /* Clamp to a sane range — anything over 8 h is almost certainly a typo. */
+  if (minutes < 0)   minutes = 0;
+  if (minutes > 480) minutes = 480;
+  esp_err_t err = sleep_timer_set(minutes);
+
+  cJSON *resp = cJSON_CreateObject();
+  cJSON_AddBoolToObject(resp, "success", err == ESP_OK);
+  cJSON_AddNumberToObject(resp, "minutes", minutes);
+  char *resp_str = cJSON_Print(resp);
+  httpd_resp_set_type(req, "application/json");
+  httpd_resp_send(req, resp_str, HTTPD_RESP_USE_STRLEN);
+  free(resp_str);
+  cJSON_Delete(resp);
+  return err == ESP_OK ? ESP_OK : ESP_FAIL;
 }
 
 static esp_err_t artwork_handler(httpd_req_t *req) {
@@ -359,6 +409,8 @@ static esp_err_t system_info_handler(httpd_req_t *req) {
   const esp_app_desc_t *app_desc = esp_app_get_description();
   cJSON_AddStringToObject(info, "firmware_version", app_desc->version);
   cJSON_AddBoolToObject(info, "eq_supported", true);
+  cJSON_AddBoolToObject(info, "decorative_leds",
+                        ha_airplay_leds_decorative_is_enabled());
 
   cJSON_AddItemToObject(json, "info", info);
   cJSON_AddBoolToObject(json, "success", true);
@@ -718,6 +770,16 @@ esp_err_t web_server_start(uint16_t port) {
                              .method = HTTP_GET,
                              .handler = artwork_handler};
   httpd_register_uri_handler(s_server, &artwork_uri);
+
+  httpd_uri_t sleep_get_uri = {.uri = "/api/sleep_timer",
+                               .method = HTTP_GET,
+                               .handler = sleep_timer_get_handler};
+  httpd_register_uri_handler(s_server, &sleep_get_uri);
+
+  httpd_uri_t sleep_post_uri = {.uri = "/api/sleep_timer",
+                                .method = HTTP_POST,
+                                .handler = sleep_timer_post_handler};
+  httpd_register_uri_handler(s_server, &sleep_post_uri);
 
   httpd_uri_t system_restart_uri = {.uri = "/api/system/restart",
                                     .method = HTTP_POST,

@@ -30,6 +30,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include <string.h>
+
 #include <math.h>
 #include <stdatomic.h>
 
@@ -122,6 +124,19 @@ static void on_rtsp_event(rtsp_event_t event, const rtsp_event_data_t *data,
     ha_airplay_leds_set_playback_state(HA_AIRPLAY_PLAYBACK_DISCONNECTED);
     break;
   case RTSP_EVENT_METADATA:
+    /* New track — fire a 1.5 s rotating shimmer in the artwork hue.
+       Decorative-only, so the slide-off "quiet" mode stays quiet.
+       De-bounce: only fire when the title actually changed (the same
+       metadata arrives multiple times during a session for progress
+       updates etc.). */
+    if (data && data->metadata.title[0]) {
+      static char last_title[METADATA_STRING_MAX] = {0};
+      if (strncmp(last_title, data->metadata.title, sizeof(last_title)) != 0) {
+        strncpy(last_title, data->metadata.title, sizeof(last_title) - 1);
+        last_title[sizeof(last_title) - 1] = '\0';
+        ha_airplay_leds_show_track_change();
+      }
+    }
     break;
   }
 }

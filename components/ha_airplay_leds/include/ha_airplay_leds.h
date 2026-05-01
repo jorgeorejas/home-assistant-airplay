@@ -67,6 +67,13 @@ void ha_airplay_leds_set_muted(bool muted);
 void ha_airplay_leds_show_output_change(bool jack_in);
 
 /**
+ * 1.5 s rotating shimmer in the artwork hue when a new track starts.
+ * Masks the abrupt hue change between songs. Decorative-only — gates
+ * off when the slide switch suppresses decorative effects.
+ */
+void ha_airplay_leds_show_track_change(void);
+
+/**
  * Override the PLAYING-mode base hue with a value derived from album
  * artwork. When enabled=false (e.g. the image is near-grey) the engine
  * falls back to the time-based hue rotation.
