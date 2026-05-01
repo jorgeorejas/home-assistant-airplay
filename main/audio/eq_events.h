@@ -9,18 +9,16 @@
  * Compile-time gated: only available when CONFIG_DAC_TAS58XX is set.
  */
 
+#include "audio_eq.h"
 #include "esp_err.h"
 #include <stdbool.h>
 #include <stdint.h>
 
-#ifdef CONFIG_DAC_TAS58XX
-#include "dac_tas58xx_eq.h"
-#else
-/* Provide the constant even when EQ hardware isn't present so that
-   data structures compile cleanly.  The event system simply won't
-   be active. */
-#define TAS58XX_EQ_BANDS 15
-#endif
+/* Single canonical constant. The legacy `TAS58XX_EQ_BANDS` and
+   `SETTINGS_EQ_BANDS` aliases below exist only for source compat
+   while the rename rolls through; new code should use AUDIO_EQ_BANDS
+   directly. */
+#define TAS58XX_EQ_BANDS AUDIO_EQ_BANDS
 
 /** Maximum number of EQ event listeners */
 #define EQ_MAX_LISTENERS 4

@@ -22,7 +22,7 @@ Target: **Home Assistant Voice Preview Edition** (NC-VK-9727). No hardware modif
 | Output | 3.5 mm stereo jack | switched output; detect line on GPIO17 (Phase 2) |
 | LED ring | 12 × WS2812B | GPIO21 data, GPIO45 gated VCC rail |
 | User input | Rotary encoder + push button | encoder A/B on GPIO16/18, button on GPIO0 |
-| User input | Side slide switch | GPIO3, active-low. Physical mute in stock firmware; **repurposed as LED on/off in Home Assistant AirPlay** |
+| User input | Side slide switch | GPIO3, active-low. Physical mute in stock firmware; **repurposed in Home Assistant AirPlay to gate decorative LED renders** (utility overlays still show) |
 
 ## Pin map
 
@@ -39,7 +39,7 @@ Authoritative source: [docs/home-assistant-voice-pe-dev/home-assistant-voice.yam
 | Jack detect | 17 | in | **unused in Phase 1**; hook planned for Phase 2 (200 ms debounce) |
 | Internal amp enable (TPA6211A) | 47 | out | driven HIGH at boot; Phase 2 flips LOW when jack is inserted |
 | LED ring data | 21 | out | WS2812B 12 LEDs, 10 MHz RMT, GRB byte order |
-| LED ring VCC enable | 45 | out | **driven by the mute slide** (GPIO3 LOW = rail HIGH = ring powered) |
+| LED ring VCC enable | 45 | out | driven HIGH at boot and held there. Slide switch (GPIO3) gates a software flag (`s_decorative_enabled`), not the rail |
 | Rotary encoder A | 16 | in, pull-up | quadrature, 4 edges = 1 detent |
 | Rotary encoder B | 18 | in, pull-up | |
 | Center button | 0 | in, pull-up | active-low, strapping pin |

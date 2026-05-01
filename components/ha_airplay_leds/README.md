@@ -46,16 +46,18 @@ Private glue between `audio_tap.c` and `leds.c` so their contract isn't exposed 
 - **Playing** — base HSV colour at `base_bright = 0.15 + 0.20 × RMS`, hue from artwork when available else time-rotating. On beat: add `flash × 180` to every RGB channel, flash decays with τ = 400 ms. The saturation/gain lets music "move" the ring without being loud.
 - **Muted** — fixed: positions 3 and 9 at (60, 0, 0), everything else off. Mirrors the upstream yaml's muted pattern.
 
-## Power rail
+## Power rail and decorative gate
 
-`ha_airplay_leds_set_power(bool)` drives GPIO45 HIGH/LOW. On power-on, the render task sleeps for 15 ms (`LED_POWER_SETTLE_MS`) before refreshing, giving the rail's LDO and bypass cap time to stabilise. Without the settle the first frame shows a garbled green artifact.
+The WS2812B VCC rail (GPIO45) is driven HIGH at `ha_airplay_leds_init()` and held there for the device's lifetime. The render task sleeps 15 ms (`LED_POWER_SETTLE_MS`) after the boot rise before clocking the first frame, giving the LDO and bypass cap time to stabilise — without the settle the first frame shows a garbled green artifact.
+
+`ha_airplay_leds_set_decorative_enabled(bool)` toggles a software flag that gates only the PLAYING and IDLE renders. Utility overlays (MUTE, VOLUME bar, CONNECTION sweep) render in either state, so the user keeps essential feedback when the slide is "off" — only the ambient/idle effects go dark. When decorative is off and no utility overlay is active, the render task writes blank pixels.
 
 ## Public API (`include/ha_airplay_leds.h`)
 
 | Symbol | Called from | Effect |
 |---|---|---|
-| `ha_airplay_leds_init()` | `main/main.c` | creates the RMT strip handle, arms GPIO45 as output, starts the render task |
-| `ha_airplay_leds_set_power(bool)` | `components/ha_airplay_ui/led_switch.c` (mute slide) | drives GPIO45 |
+| `ha_airplay_leds_init()` | `main/main.c` | creates the RMT strip handle, arms GPIO45 HIGH, starts the render task |
+| `ha_airplay_leds_set_decorative_enabled(bool)` | `components/ha_airplay_ui/led_switch.c` (slide) | gate decorative renders |
 | `ha_airplay_leds_set_playback_state(state)` | `components/ha_airplay_ui/ui.c` (RTSP events) | idle / connected / playing / paused / disconnected |
 | `ha_airplay_leds_show_volume(fraction, hold_ms)` | encoder and iOS-volume poll | volume overlay |
 | `ha_airplay_leds_flash_connection()` | `RTSP_EVENT_CLIENT_CONNECTED` | 5 s sweep |

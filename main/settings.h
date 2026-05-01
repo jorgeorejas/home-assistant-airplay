@@ -100,9 +100,10 @@ esp_err_t settings_get_device_name(char *name, size_t len);
 esp_err_t settings_set_device_name(const char *name);
 
 // ---- EQ settings ----
+#include "audio/audio_eq.h"
 
-/** Number of EQ bands stored in NVS */
-#define SETTINGS_EQ_BANDS 15
+/** Number of EQ bands stored in NVS — single canonical constant. */
+#define SETTINGS_EQ_BANDS AUDIO_EQ_BANDS
 
 /**
  * Get saved EQ gains.

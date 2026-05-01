@@ -8,7 +8,7 @@ The physical-controls layer: rotary encoder, center button, and the side slide s
 |---|---|---|
 | `encoder.c` | 16 (A), 18 (B) | Quadrature decode — ISR notifies a task that walks a 16-entry state table. Fires on every detent (4 edges). |
 | `button.c` | 0 | Center push-button. Debounce → multi-click counter → long-press detector. One of `short / double / triple / long` callbacks fires per interaction. |
-| `led_switch.c` | 3 | Side slide switch. ISR + debounce task. LOW → LEDs on (drives `ha_airplay_leds_set_power(true)`), HIGH → LEDs off. |
+| `led_switch.c` | 3 | Side slide switch. ISR + debounce task. LOW → decorative effects on; HIGH → decorative off (utility overlays still render). Drives `ha_airplay_leds_set_decorative_enabled(...)`. |
 | `ui.c` | — | Coordinator. Wires the above into `playback_control_*`, `ha_airplay_leds_*`, `rtsp_events_*`, and maintains the hard-mute state machine. |
 
 Public API is a single `ha_airplay_ui_init()` in `include/ha_airplay_ui.h`. `ui_internal.h` defines the encoder/button/switch-start signatures kept private to the component.
@@ -56,13 +56,14 @@ iPhone-side volume changes don't go through our encoder path — they arrive via
 | `RTSP_EVENT_DISCONNECTED` | state → DISCONNECTED (2 s red fade then idle) |
 | `RTSP_EVENT_METADATA` | unused here (artwork handling is in `ha_airplay_artwork`) |
 
-## LED on/off slide (`led_switch.c`)
+## Decorative-LED slide (`led_switch.c`)
 
-Stock HA Voice PE firmware uses this slide as a hardware microphone mute — Home Assistant AirPlay doesn't use the microphone at all, so the slide is free. The polarity matches the user's intuition: slide physically *toward* the mute icon → ring lights up; slide away → ring goes dark.
+Stock HA Voice PE firmware uses this slide as a hardware microphone mute — Home Assistant AirPlay doesn't use the microphone at all, so the slide is free. It now toggles a software gate over the *decorative* renders only: PLAYING beat-pulse and IDLE breathing go dark when the slide is off, but **utility overlays — MUTE, VOLUME bar, CONNECTION sweep — render unconditionally** so the user keeps the volume dial and other essential feedback.
 
 - 40 ms debounce task (the slide bounces noticeably on the physical mechanism).
-- Seeds the power state at boot from the current GPIO level so the ring reflects the slider position as soon as `ha_airplay_leds_init` finishes.
+- Seeds the decorative flag at boot from the current GPIO level so the ring reflects the slider position as soon as `ha_airplay_leds_init` finishes.
 - Uses `gpio_install_isr_service()` — tolerates the case where it's already installed (the encoder and button components install it first).
+- The WS2812B VCC rail (GPIO45) is held HIGH by `ha_airplay_leds_init` for the device's lifetime; the slide does not power-gate the rail.
 
 ## Stack sizes
 

@@ -4,6 +4,7 @@
 #include "audio_stream.h"
 #include "buttons.h"
 #include "chime.h"
+#include "esp_ota_ops.h"
 #include "now_playing.h"
 #include "rtsp_events.h"
 #include "spiram_task.h"
@@ -32,6 +33,7 @@
 #include "ha_airplay_leds.h"
 #include "ha_airplay_ui.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -81,7 +83,18 @@ static void start_airplay_services(void) {
 
   audio_output_start();
 
-  ESP_ERROR_CHECK(rtsp_server_start());
+  /* Soft-fail RTSP start: this runs on every network-up edge, so a
+     transient socket-exhaustion failure on hour 73 of uptime would
+     reboot-loop the box if we ESP_ERROR_CHECK'd it. The next
+     network_monitor tick retries naturally. */
+  esp_err_t rtsp_err = rtsp_server_start();
+  if (rtsp_err != ESP_OK) {
+    ESP_LOGE(TAG, "RTSP start failed: %s — will retry on next network tick",
+             esp_err_to_name(rtsp_err));
+    audio_output_stop();
+    s_airplay_started = false;
+    return;
+  }
 
   s_airplay_started = true;
   playback_control_set_source(PLAYBACK_SOURCE_AIRPLAY);
@@ -104,12 +117,37 @@ static void stop_airplay_services(void) {
 }
 #endif
 
+static void mark_ota_valid_if_pending(void) {
+  /* Cancel rollback once the device proves itself healthy. Without this
+     a bad OTA either rolls back on every boot (if rollback is on) or
+     latches a broken image until manual reflash (if rollback is off).
+     Idempotent — only fires when the running partition is in pending state. */
+  static bool s_already_marked = false;
+  if (s_already_marked) {
+    return;
+  }
+  esp_ota_img_states_t state;
+  const esp_partition_t *running = esp_ota_get_running_partition();
+  if (running && esp_ota_get_state_partition(running, &state) == ESP_OK) {
+    if (state == ESP_OTA_IMG_PENDING_VERIFY) {
+      esp_err_t err = esp_ota_mark_app_valid_cancel_rollback();
+      if (err == ESP_OK) {
+        ESP_LOGI(TAG, "OTA: marked running app as valid (rollback canceled)");
+      } else {
+        ESP_LOGW(TAG, "OTA: mark_app_valid failed: %s", esp_err_to_name(err));
+      }
+    }
+  }
+  s_already_marked = true;
+}
+
 static void network_monitor_task(void *pvParameters) {
   (void)pvParameters;
   bool had_network = ethernet_is_connected() || wifi_is_connected();
   bool dns_running = !had_network;
   bool wifi_started = wifi_is_connected() || !ethernet_is_connected();
   bool had_eth = ethernet_is_connected();
+  int64_t healthy_since_us = 0;
 
   // Start captive portal DNS if no network yet
   if (dns_running) {
@@ -122,6 +160,19 @@ static void network_monitor_task(void *pvParameters) {
     bool eth_up = ethernet_is_connected();
     bool wifi_up = wifi_is_connected();
     bool has_network = eth_up || wifi_up;
+
+    /* Mark the OTA image valid after 60 s of continuous network. Sustained
+       connectivity is the cheapest "device is healthy" signal we can gate on. */
+    if (has_network && s_airplay_started) {
+      int64_t now_us = esp_timer_get_time();
+      if (healthy_since_us == 0) {
+        healthy_since_us = now_us;
+      } else if (now_us - healthy_since_us >= 60LL * 1000 * 1000) {
+        mark_ota_valid_if_pending();
+      }
+    } else {
+      healthy_since_us = 0;
+    }
 
     // Ethernet just came up — stop WiFi entirely
     if (eth_up && !had_eth && wifi_started) {
@@ -140,6 +191,13 @@ static void network_monitor_task(void *pvParameters) {
 
     had_eth = eth_up;
     has_network = eth_up || wifi_is_connected();
+
+    /* Retry path: if network is up but AirPlay never started (e.g.
+       transient socket error during start_airplay_services), keep
+       trying every tick until it succeeds. */
+    if (has_network && !s_airplay_started) {
+      start_airplay_services();
+    }
 
     if (has_network == had_network) {
       continue;
