@@ -33,7 +33,7 @@ Items below are annotated with their post-`v0.5.0` status.
 | # | Status | Finding | Source | Effort |
 |---|:--:|---|---|---|
 | 8 | ✅ | **Artwork on the homepage** + `/api/artwork.jpg` with content ETag. | ux L2 | S |
-| 9 | 📅 | **Push-driven now-playing** — replace 2 s polling with `/ws/now_playing` mirroring the `log_stream` pattern. Polling at 2 s is still in place; works fine but isn't push. | ux L1 | S |
+| 9 | ✅ | **Push-driven now-playing** — `/ws/now_playing` WebSocket broadcasts on every RTSP event. Dashboard uses it with polling fallback. v0.8.0. | ux L1 | S |
 | 10 | 📅 | **Realtime RX stacks force-pinned to internal RAM**. Hypothesis: 10–20 KB internal heap recoverable. Needs benchmarking. | performance HIGH | M |
 | 11 | ✅ | **Phase 2: jack-detect on GPIO17 → GPIO47 amp toggle** + 5 s output-destination LED overlay. | ux table, architecture #9 | M |
 | 12 | ✅ | **Chime path** — −6 dB attenuation + clean stop on real audio frames (no mid-arpeggio resume). `apply_volume` is a no-op here because AIC3204 hardware volume applies on top. | ux L5 | S |
@@ -51,7 +51,7 @@ Items below are annotated with their post-`v0.5.0` status.
 | 19 | ✅ | **`main/hap/` namespace is HomeKit-shaped but holds AirPlay 2 transient pairing.** Renamed to `main/airplay_pair/` (public header `airplay_pair.h`) in v0.6.0. | architecture #1 | M |
 | 20 | ⏸ | **Dead upstream code** in Voice PE binary (`main/led.c`, `main/buttons.c`). Decided to keep — call sites in `main.c`/`audio_output.c`/`a2dp_sink.c` reference them and the no-op cost is sub-µs / frame, ~5 KB flash. Documented in `main/CMakeLists.txt`. | architecture #7/#8 | S |
 | 21 | ✅ | **DMA: 8×512** shipped in v0.6.0 — same 93 ms buffer, half the ISR rate. | performance HIGH | S |
-| 22 | 📅 | **EQ commit feedback loop** polish (sub-dB step, active-preset highlight, applied confirmation). | ux L3 | M |
+| 22 | ✅ | **EQ commit feedback loop** — 0.5 dB slider step, active-preset highlight, "Saving…" → "Applied" status pill that requires a GET round-trip to confirm. v0.8.0. | ux L3 | M |
 | 23 | ✅ | **Volume curve non-linear** — 3 dB below -18 dB, 1.5 dB above. v0.6.0. | ux L8 | S |
 | 24 | ✅ | **Slide-switch state on dashboard** — `decorative_leds` field in `/api/system/info`, surfaced as a Status row. v0.7.0. | ux L6 | S |
 | 25 | ✅ | **Track-change ring sweep** — 1.5 s rotating shimmer in artwork hue on `RTSP_EVENT_METADATA` (with title de-bounce). v0.7.0. | ux delight | S |
@@ -59,7 +59,7 @@ Items below are annotated with their post-`v0.5.0` status.
 | 27 | ✅ | **Don't tear down AP after STA gets IP** — APSTA stays up for the lifetime of the device. v0.6.0. | reliability P1 | S |
 | 28 | ✅ | **`gpio_install_isr_service(ESP_INTR_FLAG_IRAM)`** in all four ha_airplay_ui ISR sites. v0.6.0. | reliability P2 | S |
 | 29 | ✅ | **`dac_tas58xx` is now a conditional dep** gated on `CONFIG_DAC_TAS58XX`. v0.6.0. | architecture #4 | S |
-| 30 | 📅 | **LED render 50 → 30 Hz.** | performance MEDIUM | S |
+| 30 | ✅ | **LED render 30 Hz** (was 50 Hz) — visually identical on 12 pixels, ~40 % fewer core-1 wakeups. v0.8.0. | performance MEDIUM | S |
 
 ## What's healthy (don't touch)
 
@@ -89,6 +89,7 @@ follow-up sprints (E, F) covering the cleanup + delight tier.
 - **Sprint E — architecture cleanup + reliability polish** (v0.6.0): ✅
   shipped — items **19, 21, 23, 27, 28, 29**.
 - **Sprint F — UX delight** (v0.7.0): ✅ shipped — items **24, 25, 26**.
+- **Sprint G — push + polish** (v0.8.0): ✅ shipped — items **9, 22, 30**.
 
 A short HomeKit experiment ran on a `feat/homekit` branch (not part of
 the review backlog) — added `espressif/esp-homekit-sdk` as a submodule
@@ -99,10 +100,8 @@ HomeKit Bridge.
 
 ## Remaining backlog
 
-After Sprints A–F, what's still open:
+After Sprints A–G, what's still open:
 
-- **#9 push-driven `/ws/now_playing`** — 2 s polling works fine; would
-  eliminate UI lag but isn't a real pain point.
 - **#10 PSRAM stacks experiment** — hypothesis for recovering 10–20 KB
   of internal heap; needs benchmarking + risk testing.
 - **#15 boot-time DAC ramp parallelization** — would shave ~2 s off
@@ -111,9 +110,6 @@ After Sprints A–F, what's still open:
   risk for the residential threat model.
 - **#20 dead upstream code (`led.c`/`buttons.c`)** — kept on purpose;
   the no-op cost is below the call-site disruption.
-- **#22 EQ commit feedback polish** — sub-dB slider step, active-preset
-  highlight, applied confirmation pill.
-- **#30 LED render 50 → 30 Hz** — minor wakeup-rate refinement.
 
 Phase 2 PRD remainder (separate from the review backlog):
 
@@ -121,4 +117,6 @@ Phase 2 PRD remainder (separate from the review backlog):
 - Long-press LED mode cycle
 - Persistent LED mode in NVS
 
-None of the open items block anything; pick from the list as motivation strikes.
+26 of 30 review items shipped (24 ✅ + 2 ⏸/closed-by-decision). None
+of the remaining items block anything; pick from the list as
+motivation strikes.

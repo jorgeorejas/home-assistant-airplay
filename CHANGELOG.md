@@ -7,6 +7,7 @@ phase from the PRD (0 = viability, 1 = stable audio + controls, 2 = Phase 2
 features, etc.).
 
 Tags:
+- `v0.8.0` — Sprint G (push-driven now-playing, EQ feedback polish, LED 30 Hz)
 - `v0.7.0` — Sprint F (UX delight: sleep timer, track-change ring sweep, slide state)
 - `v0.6.0` — Sprint E (architecture cleanup: hap → airplay_pair, conditional deps, ISR IRAM, AP+STA forever, non-linear volume, DMA refinement)
 - `v0.5.0` — Sprint A–D follow-ups + Phase 2 jack-detect
@@ -16,6 +17,38 @@ Tags:
 ## [Unreleased]
 
 _(no entries)_
+
+## [0.8.0] — 2026-05-01
+
+Push-driven now-playing + EQ commit polish + LED render frequency
+tweak. Three small review items rolled together.
+
+### Added
+- **`/ws/now_playing` WebSocket** (`main/network/now_playing_ws.{c,h}`)
+  — broadcasts a JSON snapshot to all connected clients on every
+  RTSP event (connect, playing, paused, disconnected, metadata).
+  Connect-time send is the latest snapshot so the page renders
+  immediately. Up to 3 concurrent clients (mirrors `log_stream.c`).
+  Visible play-tap → UI-update latency drops from ~1 s median to
+  &lt;50 ms.
+
+### Changed
+- Dashboard `/` swaps polling `setInterval(refreshNp, 2000)` for the
+  WebSocket above. Exponential-backoff reconnect with a polling
+  fallback that activates after the second failed attempt — keeps
+  the page working against older firmware where `/ws/now_playing`
+  isn't registered.
+- EQ slider step 1 dB → 0.5 dB.
+- EQ commit feedback: an "active preset" border highlights the matching
+  preset button when current gains exactly match (within 0.05 dB). A
+  status pill above the EQ flips "Saving…" (orange) → "&lt;preset&gt; preset"
+  / "Custom" (green) only after a follow-up GET round-trips
+  successfully.
+- LED render frequency 50 Hz → 30 Hz. Visually identical on a 12-pixel
+  ring at our brightness range; ~40 % fewer wakeups on core 1.
+- `config.max_uri_handlers` 20 → 32 in `web_server_start` so the
+  WebSocket route fits alongside captive portal + EQ + artwork +
+  sleep_timer + ws/logs.
 
 ## [0.7.0] — 2026-05-01
 
