@@ -89,7 +89,18 @@ footer{margin-top:24px;color:var(--dim);font-size:12px;text-align:center}
 
 <section class="card">
   <h2>Device</h2>
-  <div class="presets">
+  <div class="row" style="border:0;padding-top:0">
+    <b>Name</b>
+    <span style="display:flex;gap:8px;align-items:center">
+      <input id="name-input" type="text" maxlength="63"
+             style="background:#0e0e12;color:var(--txt);border:1px solid var(--line);border-radius:7px;padding:6px 10px;font:inherit;min-width:180px;text-align:right">
+      <button id="save-name" class="primary">Save</button>
+    </span>
+  </div>
+  <div class="row" style="border:0;padding:0;color:var(--dim);font-size:12px">
+    Renaming updates mDNS too — bookmark <span id="hostname-hint">altavoces-salon.local</span> after saving.
+  </div>
+  <div class="presets" style="margin-top:14px">
     <button class="danger" id="restart">Restart</button>
     <a href="/logs"><button>Live logs</button></a>
   </div>
@@ -156,6 +167,18 @@ document.getElementById('restart').addEventListener('click',async()=>{
   toast('Restarting…');
 });
 
+document.getElementById('save-name').addEventListener('click',async()=>{
+  const name=document.getElementById('name-input').value.trim();
+  if(!name){toast('Name cannot be empty');return}
+  try{
+    const r=await fetch('/api/device/name',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});
+    if(r.ok){toast('Saved — restart for mDNS to update');}
+    else{toast('Save failed: '+r.status)}
+  }catch(e){toast('Save failed')}
+});
+
+function slug(s){return (s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'')||'ha-airplay'}
+
 function fmtTime(s){if(!s||s<0)s=0;s=Math.floor(s);const m=Math.floor(s/60),x=s%60;return m+':'+(x<10?'0':'')+x}
 function escapeHtml(s){return (s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 
@@ -198,13 +221,18 @@ async function refresh(){
     const info=await(await fetch('/api/system/info')).json();
     if(info.success){
       const i=info.info;
-      document.getElementById('name').textContent=i.device_name||'AirPlay';
-      document.title=i.device_name||'AirPlay';
+      const name=i.device_name||'AirPlay';
+      document.getElementById('name').textContent=name;
+      document.title=name;
       document.getElementById('net').textContent=i.eth_connected?'Ethernet':(i.wifi_connected?'Wi-Fi':'offline');
       document.getElementById('ip').textContent=i.ip;
       document.getElementById('mac').textContent=i.mac;
       document.getElementById('fw').textContent=i.firmware_version;
       document.getElementById('heap').textContent=fmtHeap(i.free_heap);
+      const inp=document.getElementById('name-input');
+      if(inp&&document.activeElement!==inp)inp.value=name;
+      const hh=document.getElementById('hostname-hint');
+      if(hh)hh.textContent=slug(name)+'.local';
     }
     const eq=await(await fetch('/api/eq')).json();
     if(eq.success)applyGains(eq.gains);

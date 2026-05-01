@@ -84,6 +84,7 @@ esp_err_t settings_set_wifi_credentials(const char *ssid, const char *password);
  * @return true if credentials exist, false otherwise
  */
 bool settings_has_wifi_credentials(void);
+bool settings_has_device_name(void);
 
 /**
  * Get device name (returns default if none saved)

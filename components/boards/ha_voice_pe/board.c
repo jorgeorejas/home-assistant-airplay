@@ -138,13 +138,16 @@ static void start_wifi_fallback_supervisor(void) {
 }
 #endif /* HA_AIRPLAY_HAVE_WIFI_CONFIG */
 
-/* Seed NVS WiFi credentials from wifi_config.h (Home Assistant AirPlay hardcodes them at
- * compile time per the PRD — captive portal is a fallback only). Runs on
- * every boot so re-flashing with updated credentials is the source of truth.
- * Falls through to upstream captive-portal behaviour if wifi_config.h is
- * absent or WIFI_SSID_1 is empty. */
+/* Seed NVS WiFi credentials from wifi_config.h, but ONLY if the user hasn't
+ * configured anything via the captive portal or /api/wifi/config. The
+ * compile-time defaults are a "factory" image — once NVS holds real
+ * credentials the user typed in, we don't clobber them on every boot. */
 static void seed_wifi_credentials_from_config(void) {
 #if HA_AIRPLAY_HAVE_WIFI_CONFIG
+  if (settings_has_wifi_credentials()) {
+    ESP_LOGI(TAG, "WiFi credentials present in NVS; skipping wifi_config.h seed");
+    return;
+  }
   int first = next_configured_net(-1);
   if (first < 0) {
     ESP_LOGW(TAG, "wifi_config.h present but no non-empty SSID found; "
@@ -154,7 +157,7 @@ static void seed_wifi_credentials_from_config(void) {
   const wifi_net_t *n = &s_wifi_nets[first];
   esp_err_t err = settings_set_wifi_credentials(n->ssid, n->password);
   if (err == ESP_OK) {
-    ESP_LOGI(TAG, "seeded WiFi credentials for SSID='%s' from wifi_config.h",
+    ESP_LOGI(TAG, "factory-seeded WiFi credentials for SSID='%s' (NVS was empty)",
              n->ssid);
     s_wifi_active_idx = first;
   } else {
@@ -167,14 +170,23 @@ static void seed_wifi_credentials_from_config(void) {
 #endif
 }
 
-/* Seed the AirPlay device name from wifi_config.h's HA_AIRPLAY_DEVICE_NAME on
- * every boot. Matches the "re-flash is the source of truth" rule used for WiFi
- * creds — renaming is a compile-time change, not a runtime one. */
+/* Seed the AirPlay device name from wifi_config.h's HA_AIRPLAY_DEVICE_NAME,
+ * but only if NVS doesn't already hold one. Otherwise a user who renames
+ * the device via /api/device/name would lose it on every reboot. The
+ * compile-time name is a factory default, not an enforced value. */
 static void seed_device_name_from_config(void) {
 #if HA_AIRPLAY_HAVE_WIFI_CONFIG && defined(HA_AIRPLAY_DEVICE_NAME)
+  /* settings_get_device_name returns the default string when NVS is
+     empty — distinguish "user named it the factory default" (no NVS
+     entry, default returned) from "user explicitly set this same
+     value" by checking has_device_name (NVS key present). */
+  if (settings_has_device_name()) {
+    ESP_LOGI(TAG, "device name present in NVS; skipping wifi_config.h seed");
+    return;
+  }
   esp_err_t err = settings_set_device_name(HA_AIRPLAY_DEVICE_NAME);
   if (err == ESP_OK) {
-    ESP_LOGI(TAG, "seeded AirPlay device name='%s' from wifi_config.h",
+    ESP_LOGI(TAG, "factory-seeded AirPlay device name='%s' (NVS was empty)",
              HA_AIRPLAY_DEVICE_NAME);
   } else {
     ESP_LOGW(TAG, "seeding device name failed: %s", esp_err_to_name(err));
