@@ -1,7 +1,9 @@
 #include "audio_output.h"
 
+#include "audio_eq.h"
 #include "audio_receiver.h"
 #include "audio_resample.h"
+#include "chime.h"
 #include "ha_airplay_leds.h"
 #include "led.h"
 #include "driver/i2s_std.h"
@@ -12,6 +14,7 @@
 #include "rtsp_server.h"
 #include <inttypes.h>
 #include <stdlib.h>
+#include <string.h>
 
 // SIDE NOTE; providing power from GPIO pins is capped ~20mA.
 #if CONFIG_I2S_GND_IO >= 0
@@ -91,16 +94,32 @@ static void playback_task(void *arg) {
         play_buf = resample_buf;
       }
       apply_volume(play_buf, play_samples * 2);
+      audio_eq_process(play_buf, play_samples);
       led_audio_feed(play_buf, play_samples);
       ha_airplay_audio_tap(play_buf, play_samples);
       i2s_channel_write(tx_handle, play_buf, play_samples * 4, &written,
                         portMAX_DELAY);
       taskYIELD();
     } else {
-      led_audio_feed(silence, FRAME_SAMPLES);
-      i2s_channel_write(tx_handle, silence, (size_t)FRAME_SAMPLES * 4, &written,
-                        pdMS_TO_TICKS(10));
-      vTaskDelay(1);
+      /* Receiver is idle. If a chime was queued (e.g. AirPlay client just
+         connected), pump it through the same I²S path so the LED ring
+         and the audio tap react to it normally. */
+      size_t chime_frames = chime_consume(pcm, FRAME_SAMPLES);
+      if (chime_frames > 0) {
+        if (chime_frames < (size_t)FRAME_SAMPLES) {
+          memset(pcm + chime_frames * 2, 0,
+                 ((size_t)FRAME_SAMPLES - chime_frames) * 2 * sizeof(int16_t));
+        }
+        led_audio_feed(pcm, FRAME_SAMPLES);
+        ha_airplay_audio_tap(pcm, FRAME_SAMPLES);
+        i2s_channel_write(tx_handle, pcm, (size_t)FRAME_SAMPLES * 4, &written,
+                          pdMS_TO_TICKS(10));
+      } else {
+        led_audio_feed(silence, FRAME_SAMPLES);
+        i2s_channel_write(tx_handle, silence, (size_t)FRAME_SAMPLES * 4,
+                          &written, pdMS_TO_TICKS(10));
+        vTaskDelay(1);
+      }
     }
   }
 
@@ -113,7 +132,11 @@ static void playback_task(void *arg) {
 esp_err_t audio_output_init(void) {
   i2s_chan_config_t chan_cfg =
       I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
-  chan_cfg.dma_desc_num = 8;
+  /* 16 × 256 frames ≈ 93 ms @ 44.1 kHz. Larger DMA queue absorbs WiFi
+     packet-arrival jitter that would otherwise show up as sub-second
+     audio dropouts. The extra 50 ms of play/pause latency is below
+     perceptual threshold. */
+  chan_cfg.dma_desc_num = 16;
   chan_cfg.dma_frame_num = 256;
 
   ESP_RETURN_ON_ERROR(i2s_new_channel(&chan_cfg, &tx_handle, NULL), TAG,

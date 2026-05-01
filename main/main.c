@@ -1,7 +1,11 @@
+#include "audio_eq.h"
 #include "audio_output.h"
 #include "audio_receiver.h"
 #include "audio_stream.h"
 #include "buttons.h"
+#include "chime.h"
+#include "now_playing.h"
+#include "rtsp_events.h"
 #include "spiram_task.h"
 #include "display.h"
 #include "dns_server.h"
@@ -21,7 +25,6 @@
 
 #ifdef CONFIG_BT_A2DP_ENABLE
 #include "a2dp_sink.h"
-#include "rtsp_events.h"
 #endif
 
 #include "iot_board.h"
@@ -39,6 +42,15 @@ static const char *TAG = "main";
 
 static bool s_airplay_started = false;
 static bool s_airplay_infrastructure_ready = false;
+
+static void on_chime_event(rtsp_event_t event, const rtsp_event_data_t *data,
+                           void *user_data) {
+  (void)data;
+  (void)user_data;
+  if (event == RTSP_EVENT_CLIENT_CONNECTED) {
+    chime_play();
+  }
+}
 
 static void start_airplay_services(void) {
   if (s_airplay_started) {
@@ -59,6 +71,10 @@ static void start_airplay_services(void) {
     ESP_ERROR_CHECK(hap_init());
     ESP_ERROR_CHECK(audio_receiver_init());
     ESP_ERROR_CHECK(audio_output_init());
+    ESP_ERROR_CHECK(audio_eq_init(CONFIG_OUTPUT_SAMPLE_RATE_HZ));
+    chime_init();
+    rtsp_events_register(on_chime_event, NULL);
+    ESP_ERROR_CHECK(now_playing_init());
     mdns_airplay_init();
     s_airplay_infrastructure_ready = true;
   }

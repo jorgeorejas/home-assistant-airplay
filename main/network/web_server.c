@@ -20,10 +20,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#ifdef CONFIG_DAC_TAS58XX
 #include "eq_events.h"
-#include "dac_tas58xx_eq.h"
-#endif
+#include "now_playing.h"
 
 static const char *TAG = "web_server";
 static httpd_handle_t s_server = NULL;
@@ -53,9 +51,22 @@ static esp_err_t serve_spiffs_file(httpd_req_t *req, const char *path,
   return ESP_OK;
 }
 
+// Embedded dashboard pages — served from flash, no SPIFFS dependency.
+extern const char index_html_start[] asm("_binary_index_html_start");
+extern const char index_html_end[] asm("_binary_index_html_end");
+extern const char logs_html_start[] asm("_binary_logs_html_start");
+extern const char logs_html_end[] asm("_binary_logs_html_end");
+
+static esp_err_t serve_embedded_html(httpd_req_t *req, const char *start,
+                                     const char *end) {
+  httpd_resp_set_type(req, "text/html; charset=utf-8");
+  httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
+  return httpd_resp_send(req, start, (ssize_t)(end - start));
+}
+
 // API handlers
 static esp_err_t root_handler(httpd_req_t *req) {
-  return serve_spiffs_file(req, "/spiffs/www/index.html", "text/html");
+  return serve_embedded_html(req, index_html_start, index_html_end);
 }
 
 static esp_err_t favicon_handler(httpd_req_t *req) {
@@ -65,7 +76,37 @@ static esp_err_t favicon_handler(httpd_req_t *req) {
 }
 
 static esp_err_t logs_page_handler(httpd_req_t *req) {
-  return serve_spiffs_file(req, "/spiffs/www/logs.html", "text/html");
+  return serve_embedded_html(req, logs_html_start, logs_html_end);
+}
+
+static esp_err_t now_playing_handler(httpd_req_t *req) {
+  now_playing_t np;
+  now_playing_get(&np);
+
+  cJSON *json = cJSON_CreateObject();
+  const char *state_str = "idle";
+  switch (np.state) {
+  case NOW_PLAYING_CONNECTED: state_str = "connected"; break;
+  case NOW_PLAYING_PLAYING:   state_str = "playing";   break;
+  case NOW_PLAYING_PAUSED:    state_str = "paused";    break;
+  case NOW_PLAYING_IDLE:      state_str = "idle";      break;
+  }
+  cJSON_AddStringToObject(json, "state", state_str);
+  cJSON_AddStringToObject(json, "title", np.title);
+  cJSON_AddStringToObject(json, "artist", np.artist);
+  cJSON_AddStringToObject(json, "album", np.album);
+  cJSON_AddStringToObject(json, "genre", np.genre);
+  cJSON_AddNumberToObject(json, "duration_secs", np.duration_secs);
+  cJSON_AddNumberToObject(json, "position_secs", np.position_secs);
+  cJSON_AddBoolToObject(json, "has_artwork", np.has_artwork);
+  cJSON_AddBoolToObject(json, "success", true);
+
+  char *json_str = cJSON_Print(json);
+  httpd_resp_set_type(req, "application/json");
+  httpd_resp_send(req, json_str, HTTPD_RESP_USE_STRLEN);
+  free(json_str);
+  cJSON_Delete(json);
+  return ESP_OK;
 }
 
 // Captive portal detection handlers
@@ -275,11 +316,7 @@ static esp_err_t system_info_handler(httpd_req_t *req) {
   cJSON_AddNumberToObject(info, "free_heap", esp_get_free_heap_size());
   const esp_app_desc_t *app_desc = esp_app_get_description();
   cJSON_AddStringToObject(info, "firmware_version", app_desc->version);
-#ifdef CONFIG_DAC_TAS58XX
   cJSON_AddBoolToObject(info, "eq_supported", true);
-#else
-  cJSON_AddBoolToObject(info, "eq_supported", false);
-#endif
 
   cJSON_AddItemToObject(json, "info", info);
   cJSON_AddBoolToObject(json, "success", true);
@@ -472,13 +509,16 @@ static esp_err_t fs_list_handler(httpd_req_t *req) {
 }
 
 /* ================================================================== */
-/*  EQ Page + API  (only when TAS58xx DAC is configured)               */
+/*  EQ Page + API                                                       */
 /* ================================================================== */
 
-#ifdef CONFIG_DAC_TAS58XX
-
 static esp_err_t eq_page_handler(httpd_req_t *req) {
-  return serve_spiffs_file(req, "/spiffs/www/eq.html", "text/html");
+  /* Same single-page dashboard; the EQ controls are inline on the home
+     page. Redirect /eq → / for friendliness. */
+  httpd_resp_set_status(req, "302 Found");
+  httpd_resp_set_hdr(req, "Location", "/");
+  httpd_resp_send(req, NULL, 0);
+  return ESP_OK;
 }
 
 static esp_err_t eq_get_handler(httpd_req_t *req) {
@@ -564,8 +604,6 @@ static esp_err_t eq_post_handler(httpd_req_t *req) {
   return ESP_OK;
 }
 
-#endif /* CONFIG_DAC_TAS58XX */
-
 esp_err_t web_server_start(uint16_t port) {
   if (s_server) {
     ESP_LOGW(TAG, "Web server already running");
@@ -629,6 +667,11 @@ esp_err_t web_server_start(uint16_t port) {
                                  .handler = system_info_handler};
   httpd_register_uri_handler(s_server, &system_info_uri);
 
+  httpd_uri_t now_playing_uri = {.uri = "/api/now_playing",
+                                 .method = HTTP_GET,
+                                 .handler = now_playing_handler};
+  httpd_register_uri_handler(s_server, &now_playing_uri);
+
   httpd_uri_t system_restart_uri = {.uri = "/api/system/restart",
                                     .method = HTTP_POST,
                                     .handler = system_restart_handler};
@@ -673,7 +716,6 @@ esp_err_t web_server_start(uint16_t port) {
                                  .handler = captive_windows_handler};
   httpd_register_uri_handler(s_server, &windows_captive);
 
-#ifdef CONFIG_DAC_TAS58XX
   httpd_uri_t eq_page_uri = {
       .uri = "/eq", .method = HTTP_GET, .handler = eq_page_handler};
   httpd_register_uri_handler(s_server, &eq_page_uri);
@@ -685,7 +727,6 @@ esp_err_t web_server_start(uint16_t port) {
   httpd_uri_t eq_post_uri = {
       .uri = "/api/eq", .method = HTTP_POST, .handler = eq_post_handler};
   httpd_register_uri_handler(s_server, &eq_post_uri);
-#endif
 
   log_stream_register(s_server);
 

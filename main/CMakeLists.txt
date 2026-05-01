@@ -40,6 +40,9 @@ set( SRC_FILES
     "network/log_stream.c"
     "led.c"
     "audio/eq_events.c"
+    "audio/audio_eq.c"
+    "audio/chime.c"
+    "now_playing.c"
     "buttons.c"
     "playback_control.c"
     "dacp_client.c"
@@ -113,6 +116,7 @@ idf_component_register(
     SRCS ${SRC_FILES}
     INCLUDE_DIRS ${INC_DIRS}
     PRIV_REQUIRES ${DEPS}
+    EMBED_FILES "network/index.html" "network/logs.html" "audio/chime.pcm"
 )
 
 # Enable function wrapping for abort() to intercept panics and mute GPIO
