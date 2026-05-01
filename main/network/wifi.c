@@ -111,12 +111,13 @@ static void event_handler(void *arg, esp_event_base_t event_base,
     s_sta_connected = true;
     xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
 
-    // Disable AP mode when STA connects
-    wifi_mode_t mode;
-    if (esp_wifi_get_mode(&mode) == ESP_OK && mode == WIFI_MODE_APSTA) {
-      ESP_LOGI(TAG, "STA connected, disabling AP mode");
-      esp_wifi_set_mode(WIFI_MODE_STA);
-    }
+    /* Keep AP+STA mode forever after the first STA connect. The cost is
+       one extra SSID broadcast (~20 KB lwIP state, negligible RF
+       overhead) but the captive portal stays reachable if credentials
+       go stale later — e.g. WiFi password rotates and the device drops
+       off. Without this the AP netif gets torn down here, and the
+       reconnect path can't bring it back cleanly because the netif is
+       freed inside the implicit teardown. Reliability review P1. */
   } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_AP_START) {
     ESP_LOGI(TAG, "AP started");
   }

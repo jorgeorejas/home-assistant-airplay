@@ -1,6 +1,6 @@
 #include <string.h>
 
-#include "hap.h"
+#include "airplay_pair.h"
 #include "hap_internal.h"
 #include "tlv8.h"
 

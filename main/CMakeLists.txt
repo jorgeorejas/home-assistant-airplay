@@ -23,12 +23,12 @@ set( SRC_FILES
     "plist/bplist_parser.c"
     "plist/bplist_builder.c"
     "plist/base64.c"
-    "hap/hap.c"
-    "hap/hap_pair_verify.c"
-    "hap/hap_pair_setup.c"
-    "hap/hap_crypto.c"
-    "hap/srp.c"
-    "hap/tlv8.c"
+    "airplay_pair/hap.c"
+    "airplay_pair/hap_pair_verify.c"
+    "airplay_pair/hap_pair_setup.c"
+    "airplay_pair/hap_crypto.c"
+    "airplay_pair/srp.c"
+    "airplay_pair/tlv8.c"
     "network/wifi.c"
     "network/mdns_airplay.c"
     "network/ptp_clock.c"
@@ -47,6 +47,12 @@ set( SRC_FILES
     "playback_control.c"
     "dacp_client.c"
 )
+# Note: led.c and buttons.c are upstream's single-LED + Kconfig-button-matrix
+# drivers. On Voice PE every related GPIO is `-1` so all init/runtime paths
+# early-return — they compile in as no-op stubs (~5 KB flash, <1 µs runtime
+# per audio frame). Architecture review #7/#8 suggested gating them out,
+# but call sites in main.c / audio_output.c / a2dp_sink.c reference the
+# symbols, so the no-op pattern is the cheaper choice here.
 
 # Select audio output implementation at compile time
 if(CONFIG_SPDIF_OUTPUT)
@@ -69,8 +75,8 @@ set( INC_DIRS
     "." 
     "audio" 
     "rtsp" 
-    "plist" 
-    "hap" 
+    "plist"
+    "airplay_pair"
     "network"
 )
 
@@ -91,7 +97,6 @@ set( DEPS
     esp_driver_ledc
     boards
     dac
-    dac_tas58xx
     ha_airplay_artwork
     ha_airplay_leds
     ha_airplay_ui
@@ -111,6 +116,14 @@ set( DEPS
 #if(CONFIG_ETH_W5500_ENABLED)
     list(APPEND DEPS esp_eth)
 #endif()
+
+# Upstream TAS58xx DAC driver — only needed on boards that actually have one.
+# Voice PE uses TLV320AIC3204; the `eq_events.h` definitions used to leak this
+# include, but were collapsed onto AUDIO_EQ_BANDS in v0.5.0 so this can stay
+# behind the gate cleanly.
+if(CONFIG_DAC_TAS58XX)
+    list(APPEND DEPS dac_tas58xx)
+endif()
 
 idf_component_register(
     SRCS ${SRC_FILES}

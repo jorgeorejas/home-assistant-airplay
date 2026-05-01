@@ -24,7 +24,7 @@
 #ifdef CONFIG_BT_A2DP_ENABLE
 #include "dac.h"
 #endif
-#include "hap.h"
+#include "airplay_pair.h"
 #include "ntp_clock.h"
 #include "ptp_clock.h"
 #include "plist.h"

@@ -129,7 +129,7 @@ esp_err_t ha_airplay_button_start(const ha_airplay_button_callbacks_t *cbs) {
   BaseType_t ok = xTaskCreate(button_task, "ha_airplay_btn", 3584, NULL, 8, &s_task);
   if (ok != pdPASS) return ESP_ERR_NO_MEM;
 
-  err = gpio_install_isr_service(0);
+  err = gpio_install_isr_service(ESP_INTR_FLAG_IRAM);
   if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) return err;
   gpio_isr_handler_add(BUTTON_GPIO, button_isr, NULL);
 

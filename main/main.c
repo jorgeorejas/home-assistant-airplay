@@ -12,7 +12,7 @@
 #include "dns_server.h"
 #include "ethernet.h"
 #include "led.h"
-#include "hap.h"
+#include "airplay_pair.h"
 #include "mdns_airplay.h"
 #include "nvs_flash.h"
 #include "playback_control.h"

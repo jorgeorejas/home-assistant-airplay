@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "hap.h"
+#include "airplay_pair.h"
 #include "mdns_airplay.h"
 #include "rtsp_handlers.h"
 #include "wifi.h"

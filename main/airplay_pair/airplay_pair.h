@@ -6,8 +6,15 @@
 #include "esp_err.h"
 
 /**
- * HAP (HomeKit Accessory Protocol) implementation for AirPlay 2
- * Handles pair-verify for transient pairing
+ * AirPlay 2 transient-pairing crypto layer.
+ *
+ * Despite the legacy `hap_*` symbol prefix (kept here to minimize churn
+ * across the upstream RTSP code), this module implements *only* the
+ * AirPlay 2 transient pair-setup / pair-verify state machine over RTSP.
+ * It is NOT a HomeKit Accessory Protocol bridge — that would need a
+ * separate stack (Espressif's esp-homekit-sdk, for example). The module
+ * was renamed from `main/hap/` to `main/airplay_pair/` to make that
+ * boundary clear after a HomeKit experiment was reverted in v0.5.0.
  */
 
 // Key sizes

@@ -86,7 +86,7 @@ esp_err_t ha_airplay_jack_detect_start(void) {
     return ESP_ERR_NO_MEM;
   }
 
-  err = gpio_install_isr_service(0);
+  err = gpio_install_isr_service(ESP_INTR_FLAG_IRAM);
   if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
     return err;
   }

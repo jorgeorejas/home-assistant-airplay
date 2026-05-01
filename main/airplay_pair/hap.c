@@ -1,6 +1,6 @@
 #include <string.h>
 
-#include "hap.h"
+#include "airplay_pair.h"
 
 #include "esp_log.h"
 #include "nvs.h"

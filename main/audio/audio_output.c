@@ -136,12 +136,14 @@ static void playback_task(void *arg) {
 esp_err_t audio_output_init(void) {
   i2s_chan_config_t chan_cfg =
       I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
-  /* 16 × 256 frames ≈ 93 ms @ 44.1 kHz. Larger DMA queue absorbs WiFi
-     packet-arrival jitter that would otherwise show up as sub-second
-     audio dropouts. The extra 50 ms of play/pause latency is below
-     perceptual threshold. */
-  chan_cfg.dma_desc_num = 16;
-  chan_cfg.dma_frame_num = 256;
+  /* 8 × 512 frames ≈ 93 ms @ 44.1 kHz — same buffered audio as 16×256,
+     half the DMA-completion ISR rate. The real fix for the originally-
+     reported sub-second dropouts was widening MAX_CONSECUTIVE_LATE in
+     audio_timing.c (24 ms → 128 ms); the DMA depth bump was a partial
+     mitigation that this refinement strictly improves on. Performance
+     review HIGH. */
+  chan_cfg.dma_desc_num = 8;
+  chan_cfg.dma_frame_num = 512;
 
   ESP_RETURN_ON_ERROR(i2s_new_channel(&chan_cfg, &tx_handle, NULL), TAG,
                       "channel create failed");

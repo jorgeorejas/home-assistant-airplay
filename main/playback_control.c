@@ -31,9 +31,23 @@
 
 static const char *TAG = "playback_ctrl";
 
-#define VOLUME_STEP_DB 3.0f
 #define VOLUME_MIN_DB  (-30.0f)
 #define VOLUME_MAX_DB  0.0f
+/* Non-linear curve: a single 3 dB step at low volume is comfortable, but
+   the same step from -12 dB → -9 dB is a noticeable ~40 % SPL jump. Use
+   a coarser step below this knee and a finer step above it. UX review L8. */
+#define VOLUME_KNEE_DB         (-18.0f)
+#define VOLUME_STEP_COARSE_DB    3.0f
+#define VOLUME_STEP_FINE_DB      1.5f
+
+static float volume_step_for(float current_db, bool going_up) {
+  /* The step used to *exit* the coarse band should be coarse, and the
+     step used to *enter* the fine band should be fine — pick based on
+     the side of the knee we'll be on after the step. */
+  float pivot = going_up ? current_db : current_db - VOLUME_STEP_FINE_DB;
+  return pivot < VOLUME_KNEE_DB ? VOLUME_STEP_COARSE_DB
+                                : VOLUME_STEP_FINE_DB;
+}
 
 static playback_source_t s_source = PLAYBACK_SOURCE_NONE;
 static bool s_muted = false;
@@ -151,9 +165,14 @@ void playback_control_play_pause(void) {
 
 void playback_control_volume_up(void) {
   switch (s_source) {
-  case PLAYBACK_SOURCE_AIRPLAY:
-    airplay_adjust_volume(VOLUME_STEP_DB);
+  case PLAYBACK_SOURCE_AIRPLAY: {
+    float current_db;
+    if (settings_get_volume(&current_db) != ESP_OK) {
+      current_db = -15.0f;
+    }
+    airplay_adjust_volume(volume_step_for(current_db, true));
     break;
+  }
 #ifdef CONFIG_BT_A2DP_ENABLE
   case PLAYBACK_SOURCE_BLUETOOTH:
     bt_a2dp_send_volume_up();
@@ -166,9 +185,14 @@ void playback_control_volume_up(void) {
 
 void playback_control_volume_down(void) {
   switch (s_source) {
-  case PLAYBACK_SOURCE_AIRPLAY:
-    airplay_adjust_volume(-VOLUME_STEP_DB);
+  case PLAYBACK_SOURCE_AIRPLAY: {
+    float current_db;
+    if (settings_get_volume(&current_db) != ESP_OK) {
+      current_db = -15.0f;
+    }
+    airplay_adjust_volume(-volume_step_for(current_db, false));
     break;
+  }
 #ifdef CONFIG_BT_A2DP_ENABLE
   case PLAYBACK_SOURCE_BLUETOOTH:
     bt_a2dp_send_volume_down();

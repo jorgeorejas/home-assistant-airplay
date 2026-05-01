@@ -89,7 +89,7 @@ esp_err_t ha_airplay_encoder_start(void (*on_turn)(int)) {
   BaseType_t ok = xTaskCreate(encoder_task, "ha_airplay_enc", 3072, NULL, 10, &s_task);
   if (ok != pdPASS) return ESP_ERR_NO_MEM;
 
-  err = gpio_install_isr_service(0);
+  err = gpio_install_isr_service(ESP_INTR_FLAG_IRAM);
   if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) return err;
   gpio_isr_handler_add(ENCODER_A_GPIO, encoder_isr, NULL);
   gpio_isr_handler_add(ENCODER_B_GPIO, encoder_isr, NULL);

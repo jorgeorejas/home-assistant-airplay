@@ -3,7 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "hap.h"
+#include "airplay_pair.h"
 
 /**
  * RTSP Connection State Management
