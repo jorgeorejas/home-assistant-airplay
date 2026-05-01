@@ -7,13 +7,122 @@ phase from the PRD (0 = viability, 1 = stable audio + controls, 2 = Phase 2
 features, etc.).
 
 Tags:
+- `v0.5.0` — Sprint A–D follow-ups + Phase 2 jack-detect
 - `v0.2.0-phase1` — Phase 1 complete
 - `v0.1.0-phase0` — Phase 0 viability gate GREEN
 
 ## [Unreleased]
 
-### Added
-- `CHANGELOG.md` (this file).
+_(no entries — `feat/homekit` was an experimental branch that is now reverted; see notes under 0.5.0)_
+
+## [0.5.0] — 2026-05-01
+
+Web dashboard, software EQ, jack-detect (Phase 2 first slice), and a
+project-wide reliability/UX pass driven by a multi-agent review. Final
+state of `main` after PR #1 plus the slide-switch behavior change.
+
+### Added — features
+- **Embedded web dashboard** at `http://<slug>.local/` — single-page UI
+  with status, now-playing card (title / artist / album / album art),
+  15-band EQ + 5 presets, device-name editor, restart. HTML lives in
+  `main/network/index.html`, embedded into the binary via `EMBED_FILES`
+  (no SPIFFS dependency).
+- **Live log viewer** at `/logs` — WebSocket-streamed device logs with
+  ANSI-strip, level coloring (I/W/E/D), substring filter, pause,
+  autoscroll, exponential reconnect.
+- **Software 15-band parametric EQ** in the audio task. 15 cascaded
+  peaking biquads (DF2T) on the LX7 FPU, ~620 µs per 8 ms block.
+  Coefficients are double-buffered with an atomic-int swap so the web
+  task never blocks the hot path. Gains persist to NVS; restored on
+  boot. Five preset curves (Flat / Loudness / Vocal / Bass+ / Treble+).
+  Implemented in `main/audio/audio_eq.{c,h}`.
+- **Now-playing endpoint** (`/api/now_playing`) — RTSP-derived metadata
+  cached in `main/now_playing.c`. Subscribes to the `rtsp_events` bus,
+  exposes title / artist / album / genre / duration / position / state /
+  artwork_etag.
+- **Album-art serving** (`/api/artwork.jpg`) — the `ha_airplay_artwork`
+  component now retains the most recent JPEG in PSRAM after decoding it
+  for hue extraction. Served with FNV-1a content-derived ETag and
+  conditional-GET (`If-None-Match` → 304). Decode pool is allocated
+  once at init instead of per track, removing a recurrent ~3 KB
+  internal-heap churn.
+- **MagSafe-style connection chime** — short ascending bell arpeggio
+  (vendored macOS PowerChime PCM, ~156 KB embedded) plays on
+  `RTSP_EVENT_CLIENT_CONNECTED`. Attenuated −6 dB so it doesn't peak at
+  full digital scale; cuts cleanly when real audio frames arrive.
+- **Phase 2: jack-detect** on GPIO17 (200 ms debounced). Drives GPIO47
+  LOW when the 3.5 mm plug is detected to mute the internal amp; a 5 s
+  cyan/amber LED overlay confirms the new output destination. Renders
+  in the utility-overlay slot so it shows even with the slide off.
+  New module `components/ha_airplay_ui/jack_detect.c`.
+- **Friendly mDNS hostname slug** — UTF-8 friendly name (e.g.
+  `Altavoces Salón`) auto-folds to RFC-1123 ASCII (`altavoces-salon`)
+  for `<slug>.local`. Diacritics are folded inline (no iconv dep).
+- **Friendly-name editor** in the dashboard — POSTs to `/api/device/name`,
+  persists to NVS, hostname slug refreshes on next boot. Live preview
+  of the resulting `<slug>.local` URL.
+- **OTA validity marking** — once the device sees 60 s of healthy
+  network with AirPlay started, `network_monitor_task` calls
+  `esp_ota_mark_app_valid_cancel_rollback()`. Without this, depending
+  on `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`, a bad image either rolled
+  back every boot or latched permanently.
+
+### Added — operational / docs
+- `docs/dashboard.md` — full HTTP / WebSocket API reference + curl recipes.
+- `docs/review/` — five multi-agent review reports (architecture,
+  performance, reliability, UX, security) plus `SUMMARY.md` punch list
+  that drove this release's Sprint A–D work.
+
+### Changed
+- **Slide switch (GPIO3) gates decorative renders only.** The WS2812B
+  VCC rail (GPIO45) is held HIGH for the device's lifetime; the slide
+  toggles a software flag that suppresses only PLAYING + IDLE. Mute,
+  volume bar, connection sweeps, and the new output-change overlay
+  render unconditionally so essential feedback is always visible.
+- **Factory-seed-once for credentials.** `iot_board_init` now seeds
+  WiFi creds and device name from `wifi_config.h` only when NVS is
+  empty. Runtime renames or credential changes via the captive portal
+  / dashboard now persist across reboots; were being clobbered every
+  boot before.
+- **I²S DMA depth bumped** 8 → 16 descriptors (~46 → 93 ms buffered).
+  Initially shipped to absorb WiFi packet jitter that produced
+  user-reported sub-second dropouts.
+- **Anchor-late detection** widened from 3 frames (~24 ms) to 16
+  frames (~128 ms) in `audio_timing.c`. Routine 2.4 GHz WiFi jitter
+  was tripping the bulk-flush threshold; this is the actual
+  root-cause fix for the dropouts.
+- **`rtsp_server_start` is now soft-fail** in `start_airplay_services`
+  — was `ESP_ERROR_CHECK`, which would reboot-loop the box on a
+  transient socket-exhaustion failure. Retries on the next
+  network-monitor tick.
+- **`parse_dmap_metadata` recursion is depth-bounded** (≤8). Hostile
+  RTSP `SET_PARAMETER` body with deeply nested `mlit`/`cmst`/`mdst`
+  containers can no longer overflow the RTSP task stack.
+- **`now_playing_get` leaves `*out` untouched on mutex timeout**
+  instead of zeroing — no more dashboard flicker to "nothing playing"
+  during heavy RTSP traffic.
+- **Three parallel `…_BANDS = 15` constants** collapsed onto a single
+  canonical `AUDIO_EQ_BANDS`, with `SETTINGS_EQ_BANDS` and
+  `TAS58XX_EQ_BANDS` kept as aliases.
+- **Doc sweep** — `docs/hardware.md`, `docs/led-ux.md`,
+  `docs/architecture.md`, `README.md`, and the relevant component
+  READMEs all updated to reflect the slide-switch behavior change and
+  the new feature surface.
+
+### Notes — HomeKit experiment (reverted)
+- A short-lived `feat/homekit` branch experimented with adding
+  `espressif/esp-homekit-sdk` to expose the speaker as a real
+  HomeKit accessory in iOS Home / macOS Home. The accessory
+  pairing flow worked (Smart Speaker service, UUID 0x228, with
+  Volume / Mute / TargetMediaState / CurrentMediaState), but
+  AirPlay's RTSP socket usage collided with the HAP HTTP
+  server's reservation: even at `CONFIG_LWIP_MAX_SOCKETS=24`
+  with the HAP socket budget cut to 4, AirPlay started failing
+  UDP socket allocation mid-stream. The branch was reverted;
+  the recommended path forward is Home Assistant's HomeKit
+  Bridge integration (zero firmware changes, ~30 min of HA
+  config). The architecture review's `main/hap/ → main/airplay_pair/`
+  rename was reverted along with the branch.
 
 ## [0.2.0-phase1] — 2026-04-19
 
